@@ -1,6 +1,8 @@
 from mne.io import read_raw_eeglab
 from mne.preprocessing import ICA
+import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.decomposition import fastica
 
 if __name__ == '__main__':
     a = read_raw_eeglab("ds003490-download/sub-007/ses-01/eeg/sub-007_ses-01_task-Rest_eeg.set")
@@ -14,5 +16,7 @@ if __name__ == '__main__':
     ic.fit(a)
 
     ic.plot_sources(a)
+
+    df = ic.to_data_frame()
 
     print("stand")
