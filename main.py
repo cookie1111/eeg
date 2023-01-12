@@ -24,8 +24,8 @@ if __name__ == '__main__':
     ic.fit(a)
 
 
-    ic.plot_sources(a)
-    ic.plot_components()
+    #ic.plot_sources(a)
+    #ic.plot_components()
 
     df = a.to_data_frame()
 
