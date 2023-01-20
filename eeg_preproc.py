@@ -2,10 +2,12 @@ import numpy as np
 from scipy.signal import cwt, morlet2
 import matplotlib.pyplot as plt
 from mne.io import read_raw_eeglab, read_raw_brainvision
+from torch.utils.data import DataLoader, Dataset
+from typing import Literal
 
 
-# this is for one singula record
-class EEG:
+# this is for one singular record
+class Singular_EEG_Dataset(Dataset):
 
     def __init__(self, file_path:str, file_type:str = "eeg_lab"):
         """
@@ -14,6 +16,7 @@ class EEG:
         :param file_path: path to the file
         :param file_type: eeg_lab, raw_brainvision
         """
+
         if file_type == "eeg_lab":
             self.sig = read_raw_eeglab(file_path)
         elif file_type == "raw_brainvision":
@@ -30,3 +33,18 @@ class EEG:
 
     def wavelet_transform_all_channels(self):
         pass
+
+
+class Participant_Singular(Dataset):
+    def __init__(self, path, mode: Literal["rest", "patterns"] = "rest",
+                 classification: Literal["parkinsons",  "medication"] = "parkinsons"):
+        pass
+
+    def get_EEG_datsets(self):
+        pass
+
+# multiple participants dataset
+class Participants_Dataset(Dataset):
+
+    def __init__(self, root_folder):
+        root_folder
