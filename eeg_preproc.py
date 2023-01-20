@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from mne.io import read_raw_eeglab, read_raw_brainvision
 from torch.utils.data import DataLoader, Dataset
 from typing import Literal
+from pathlib import Path
 
 
 # this is for one singular record
@@ -47,4 +48,22 @@ class Participant_Singular(Dataset):
 class Participants_Dataset(Dataset):
 
     def __init__(self, root_folder):
-        root_folder
+        self.root = Path(root_folder)
+
+    def __len__(self):
+        return sum(1 if "sub" in str(p) else 0 for p in self.root.iterdir())
+
+    def __getitem__(self, item: int) -> Participant_Singular:
+        """
+        The folders are named with index starting at 1 but the indexing in dataset is done from zero.
+        Participants_Dataset[0] returns sub-001
+        :param item: works only with indexing
+        :return: returns Participant_Singular of the selected subject
+        """
+        cnt = 0
+        for p in self.root.iterdir():
+            if "sub" in str(p):
+                if cnt == item:
+                    return Participant_Singular(p)
+                cnt = cnt + 1
+        raise IndexError(f"{item} is out of range for {len(self)}")
