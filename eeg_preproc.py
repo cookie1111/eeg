@@ -44,6 +44,7 @@ class Participant_Singular(Dataset):
     def get_EEG_datsets(self):
         pass
 
+# TODO: change to DataPipe
 # multiple participants dataset
 class Participants_Dataset(Dataset):
 
