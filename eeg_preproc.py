@@ -6,6 +6,41 @@ from torch.utils.data import DataLoader, Dataset
 from typing import Literal
 from pathlib import Path
 
+import os
+import mne
+import torch
+from torch.utils.data import Dataset, DataLoader
+
+class EEGDataset(Dataset):
+    def __init__(self, root_dir, tmin=0, tmax=30):
+        self.root_dir = root_dir
+        self.tmin = tmin
+        self.tmax = tmax
+        self.subjects = os.listdir(self.root_dir)
+        self.epochs_list = []
+        self.load_data()
+
+    def __len__(self):
+        return len(self.epochs_list)
+
+    def __getitem__(self, idx):
+        return self.epochs_list[idx]
+
+    def load_data(self):
+        for subject in self.subjects:
+            subject_path = os.path.join(self.root_dir, subject)
+            eeg_file = os.path.join(subject_path, [f for f in os.listdir(subject_path) if f.endswith('.set')][0])
+            raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
+            # mark the rest state part
+            rest_events = mne.make_fixed_length_events(raw, id=1, start=0, stop=raw.times[-1], duration=30)
+            raw.add_events(rest_events)
+            # mark the oddball part
+            oddball_events = mne.make_fixed_length_events(raw, id=2, start=30, stop=raw.times[-1], duration=30)
+            raw.add_events(oddball_events)
+            # extract only the rest state part
+            rest_epochs = mne.Epochs(raw, rest_events, tmin=self.tmin, tmax=self.tmax, preload=True, baseline=None)
+            self.epochs_list.append(rest_epochs)
+
 
 # this is for one singular record
 class Singular_EEG_Dataset(Dataset):
