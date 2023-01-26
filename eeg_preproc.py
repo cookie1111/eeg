@@ -11,35 +11,87 @@ import mne
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+# first session is without medication
+# annotations are already added on the thing first 4mins (til s201 marker is rest state)
+# S 3 and S 4 are eyes closed, S 1 and S 2 are eyes oepened higher orders are auditory signals
+# if person has 2 ses folders it means its a patient else its a control
+
 class EEGDataset(Dataset):
-    def __init__(self, root_dir, tmin=0, tmax=30):
+    def __init__(self, root_dir, tstart=0, tend=30, special_part=None, medicated=0):
+        """
+        Grab all subjects, for now only the medicated session is supported, add a class field to the whole thing and
+        window their eeg signal slice(slice is based off special_part parameter). Windows are accessed via index, and
+        one index is one window. Datasplit is performed on the subject level, meaning when we split for 80% we will be
+        excluding subjects and not a part of a subject.
+
+        :param root_dir: root directory of the dataset
+        :param tstart: start of the slice to use for windowing operation, measured in seconds
+        :param tend: end of slice to use for windowing operation, measured in seconds resting state as a whole lasts
+        till 4 mins
+        :param special_part: if we have a part based off annotations that we wish to use(annotations are hardcoded into
+        the class S 1, S 2, S 3, S 4 for closed eyes and open eyes respectively)
+        :param medicated: 0 - use only the medicated data, 1 - use only the off-medication data, 2 - use both
+        medicated and off-medication data.
+        """
         self.root_dir = root_dir
-        self.tmin = tmin
-        self.tmax = tmax
-        self.subjects = os.listdir(self.root_dir)
-        self.epochs_list = []
+        self.tstart = tstart
+        self.tend = tend
+        self.special_part = special_part
+        self.medicated = medicated
+        self.subjects = [p for p in os.listdir(self.root_dir) if "sub-" in p and os.path.isdir(p)]
+        self.epochs_list = None
+        self.y_list = []
         self.load_data()
 
     def __len__(self):
-        return len(self.epochs_list)
+        return len(self.y_list)
 
     def __getitem__(self, idx):
-        return self.epochs_list[idx]
+        return (self.epochs_list[idx,:,:],self.y_list[idx])
 
     def load_data(self):
         for subject in self.subjects:
             subject_path = os.path.join(self.root_dir, subject)
-            eeg_file = os.path.join(subject_path, [f for f in os.listdir(subject_path) if f.endswith('.set')][0])
-            raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
+            # subject class, if its 0 the subject has PD if 1 its a control
+            y = 1 if len(os.listdir(subject_path)) == 1 else 0
+            if self.medicated == 0 or len(os.listdir(subject_path)) == 1:
+                subject_path = os.path.join(subject_path, "ses-01")
+            elif self.medicated == 1:
+                subject_path = os.path.join(subject_path, "ses-02")
+            else:
+                subject_path1 = os.path.join(subject_path, "ses-01")
+                subject_path2 = os.path.join(subject_path, "ses-02")
+            if not self.medicated == 2:
+                eeg_file = os.path.join(subject_path, [f for f in os.listdir(subject_path) if f.endswith('.set')][0])
+                raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
+
+                if not self.special_part:
+                    rest_events = mne.make_fixed_length_events(raw, id=1, start=self.tstart, stop=self.tend,
+                                                               duration=2, overlap=1.9)
+                    rest_epochs = mne.Epochs(raw, rest_events, 1, self.tstart, self.tend).get_data()
+                    accompanying_y = [y]*rest_epochs.shape[0]
+
+            else:
+                eeg_file1 = os.path.join(subject_path1, [f for f in os.listdir(subject_path1) if f.endswith('.set')][0])
+                raw1 = mne.io.read_raw_eeglab(eeg_file1, preload=True)
+                eeg_file2 = os.path.join(subject_path2, [f for f in os.listdir(subject_path2) if f.endswith('.set')][0])
+                raw2 = mne.io.read_raw_eeglab(eeg_file2, preload=True)
+
             # mark the rest state part
-            rest_events = mne.make_fixed_length_events(raw, id=1, start=0, stop=raw.times[-1], duration=30)
-            raw.add_events(rest_events)
+            #rest_events = mne.make_fixed_length_events(raw, id=1, start=0, stop=raw.times[-1], duration=30)
+            #raw.add_events(rest_events)
             # mark the oddball part
-            oddball_events = mne.make_fixed_length_events(raw, id=2, start=30, stop=raw.times[-1], duration=30)
-            raw.add_events(oddball_events)
+            #oddball_events = mne.make_fixed_length_events(raw, id=2, start=30, stop=raw.times[-1], duration=30)
+            #raw.add_events(oddball_events)
             # extract only the rest state part
-            rest_epochs = mne.Epochs(raw, rest_events, tmin=self.tmin, tmax=self.tmax, preload=True, baseline=None)
-            self.epochs_list.append(rest_epochs)
+            # = mne.Epochs(raw, rest_events, tstart=self.tstart, tend=self.tend, preload=True, baseline=None)
+            #TODO fix so its not a python list but a numpy array!!!
+            if self.epochs_list is None:
+                self.epochs_list = rest_epochs
+            else:
+                np.concatenate([self.epochs_list.append, rest_epochs], axis=0)
+
+            self.y_list.append(accompanying_y)
 
 
 # this is for one singular record
