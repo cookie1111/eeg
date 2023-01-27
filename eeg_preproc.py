@@ -43,16 +43,30 @@ class EEGDataset(Dataset):
         self.special_part = special_part
         self.medicated = medicated
         self.ids = id_column
-        self.subjects = pd.read_table(os.path.join(root_dir,participants))
+        self.subjects = pd.read_table(os.path.join(root_dir, participants))
         self.epochs_list = None
         self.y_list = []
+        self.cur = None
+        self.data_points = []
         self.load_data()
 
     def __len__(self):
-        return len(self.y_list)
+        return sum(self.data_points)
 
+    # change so it doesn't load the whole thing and cache the current subject for fast access
     def __getitem__(self, idx):
-        return (self.epochs_list[idx,:,:],self.y_list[idx])
+        idx_epoch, idx_inner = self.convert_to_idx(idx)
+        return self.epochs_list[idx_epoch].get_data()[idx_inner], self.y_list[idx_epoch]
+
+    def convert_to_idx(self, index):
+        suma = 0
+        idx = 0
+        for i in self.data_points:
+            suma = suma + i
+            if index < suma:
+                return idx, index+i-suma
+
+            idx = idx + 1
 
     def load_data(self):
         for subject in self.subjects.itertuples():
@@ -85,32 +99,37 @@ class EEGDataset(Dataset):
                 if not self.special_part:
                     rest_events = mne.make_fixed_length_events(raw, id=1, duration=2, overlap=1.9)
                     print(self.tstart,self.tend)
-                    rest_epochs = mne.Epochs(raw, rest_events, 1, self.tstart, self.tend,baseline=None).get_data()
-                    accompanying_y = [y]*rest_epochs.shape[0]
-
+                    if self.cur is None:
+                        self.cur = rest_epochs = mne.Epochs(raw,
+                                                            rest_events,
+                                                            1,
+                                                            self.tstart,
+                                                            self.tend,
+                                                            baseline=None).drop_bad()
+                    else:
+                        rest_epochs = mne.Epochs(raw,
+                                                 rest_events,
+                                                 1,
+                                                 self.tstart,
+                                                 self.tend,
+                                                 baseline=None).drop_bad()
             else:
                 eeg_file1 = os.path.join(subject_path1, [f for f in os.listdir(subject_path1) if f.endswith('.set')][0])
-                raw1 = mne.io.read_raw_eeglab(eeg_file1, preload=True)
+                raw1 = mne.io.read_raw_eeglab(eeg_file1)
                 eeg_file2 = os.path.join(subject_path2, [f for f in os.listdir(subject_path2) if f.endswith('.set')][0])
-                raw2 = mne.io.read_raw_eeglab(eeg_file2, preload=True)
+                raw2 = mne.io.read_raw_eeglab(eeg_file2)
 
-            # mark the rest state part
-            #rest_events = mne.make_fixed_length_events(raw, id=1, start=0, stop=raw.times[-1], duration=30)
-            #raw.add_events(rest_events)
-            # mark the oddball part
-            #oddball_events = mne.make_fixed_length_events(raw, id=2, start=30, stop=raw.times[-1], duration=30)
-            #raw.add_events(oddball_events)
-            # extract only the rest state part
-            # = mne.Epochs(raw, rest_events, tstart=self.tstart, tend=self.tend, preload=True, baseline=None)
             #TODO fix so its not a python list but a numpy array!!!
             if self.epochs_list is None:
                 print("ye")
-                self.epochs_list = rest_epochs
+                self.epochs_list = [rest_epochs]
+                self.data_points = [len(rest_epochs)]
             else:
                 print("nay")
-                np.concatenate([self.epochs_list.append, rest_epochs], axis=0)
+                self.epochs_list.append(rest_epochs)
+                self.data_points.append(len(rest_epochs))
 
-            self.y_list.append(accompanying_y)
+            self.y_list.append(y)
 
 
 # this is for one singular record
