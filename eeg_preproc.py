@@ -5,19 +5,20 @@ from mne.io import read_raw_eeglab, read_raw_brainvision
 from torch.utils.data import DataLoader, Dataset
 from typing import Literal
 from pathlib import Path
+import pandas as pd
 
 import os
 import mne
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+
 # first session is without medication
 # annotations are already added on the thing first 4mins (til s201 marker is rest state)
 # S 3 and S 4 are eyes closed, S 1 and S 2 are eyes oepened higher orders are auditory signals
 # if person has 2 ses folders it means its a patient else its a control
-
 class EEGDataset(Dataset):
-    def __init__(self, root_dir, tstart=0, tend=30, special_part=None, medicated=0):
+    def __init__(self, root_dir, participants, id_column="participant_id", tstart=0, tend=30, special_part=None, medicated=0):
         """
         Grab all subjects, for now only the medicated session is supported, add a class field to the whole thing and
         window their eeg signal slice(slice is based off special_part parameter). Windows are accessed via index, and
@@ -25,6 +26,9 @@ class EEGDataset(Dataset):
         excluding subjects and not a part of a subject.
 
         :param root_dir: root directory of the dataset
+        :param participants: file describing the participants, only provide the file name and make sure its in the
+        root dir
+        :param id_column: name of column which includes the participant ids in the participants file
         :param tstart: start of the slice to use for windowing operation, measured in seconds
         :param tend: end of slice to use for windowing operation, measured in seconds resting state as a whole lasts
         till 4 mins
@@ -38,7 +42,8 @@ class EEGDataset(Dataset):
         self.tend = tend
         self.special_part = special_part
         self.medicated = medicated
-        self.subjects = [p for p in os.listdir(self.root_dir) if "sub-" in p and os.path.isdir(p)]
+        self.ids = id_column
+        self.subjects = pd.read_table(os.path.join(root_dir,participants))
         self.epochs_list = None
         self.y_list = []
         self.load_data()
@@ -50,25 +55,37 @@ class EEGDataset(Dataset):
         return (self.epochs_list[idx,:,:],self.y_list[idx])
 
     def load_data(self):
-        for subject in self.subjects:
-            subject_path = os.path.join(self.root_dir, subject)
+        for subject in self.subjects.itertuples():
+            subject_path = os.path.join(self.root_dir, subject.participant_id)
             # subject class, if its 0 the subject has PD if 1 its a control
-            y = 1 if len(os.listdir(subject_path)) == 1 else 0
-            if self.medicated == 0 or len(os.listdir(subject_path)) == 1:
-                subject_path = os.path.join(subject_path, "ses-01")
+            y = 1 if subject.Group == "CTL" else 0
+            if self.medicated == 0 or y == 1:
+                if subject.sess1_Med == "OFF":
+                    subject_path = os.path.join(subject_path, "ses-02")
+                else:
+                    subject_path = os.path.join(subject_path, "ses-01")
             elif self.medicated == 1:
-                subject_path = os.path.join(subject_path, "ses-02")
+                if subject.sess1_Med == "OFF":
+                    subject_path = os.path.join(subject_path, "ses-01")
+                else:
+                    subject_path = os.path.join(subject_path, "ses-02")
             else:
+                if y == 1:
+                    continue
                 subject_path1 = os.path.join(subject_path, "ses-01")
                 subject_path2 = os.path.join(subject_path, "ses-02")
             if not self.medicated == 2:
-                eeg_file = os.path.join(subject_path, [f for f in os.listdir(subject_path) if f.endswith('.set')][0])
+                print(subject_path)
+                subject_path_eeg = os.path.join(subject_path,os.listdir(subject_path)[0])
+                print(subject_path_eeg)
+                eeg_file = os.path.join(subject_path_eeg,
+                                        [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
                 raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
 
                 if not self.special_part:
-                    rest_events = mne.make_fixed_length_events(raw, id=1, start=self.tstart, stop=self.tend,
-                                                               duration=2, overlap=1.9)
-                    rest_epochs = mne.Epochs(raw, rest_events, 1, self.tstart, self.tend).get_data()
+                    rest_events = mne.make_fixed_length_events(raw, id=1, duration=2, overlap=1.9)
+                    print(self.tstart,self.tend)
+                    rest_epochs = mne.Epochs(raw, rest_events, 1, self.tstart, self.tend,baseline=None).get_data()
                     accompanying_y = [y]*rest_epochs.shape[0]
 
             else:
@@ -87,8 +104,10 @@ class EEGDataset(Dataset):
             # = mne.Epochs(raw, rest_events, tstart=self.tstart, tend=self.tend, preload=True, baseline=None)
             #TODO fix so its not a python list but a numpy array!!!
             if self.epochs_list is None:
+                print("ye")
                 self.epochs_list = rest_epochs
             else:
+                print("nay")
                 np.concatenate([self.epochs_list.append, rest_epochs], axis=0)
 
             self.y_list.append(accompanying_y)
@@ -155,3 +174,8 @@ class Participants_Dataset(Dataset):
                     return Participant_Singular(p)
                 cnt = cnt + 1
         raise IndexError(f"{item} is out of range for {len(self)}")
+
+
+if __name__ == '__main__':
+    dset = EEGDataset("/home/sebastjan/PycharmProjects/eeg/ds003490-download", participants="participants.tsv",
+                      tstart=0, tend=240)
