@@ -18,7 +18,8 @@ from torch.utils.data import Dataset, DataLoader
 # S 3 and S 4 are eyes closed, S 1 and S 2 are eyes oepened higher orders are auditory signals
 # if person has 2 ses folders it means its a patient else its a control
 class EEGDataset(Dataset):
-    def __init__(self, root_dir, participants, id_column="participant_id", tstart=0, tend=30, special_part=None, medicated=0):
+    def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
+                 tend: int = 30, special_part: str = None, medicated: int = 0):
         """
         Grab all subjects, for now only the medicated session is supported, add a class field to the whole thing and
         window their eeg signal slice(slice is based off special_part parameter). Windows are accessed via index, and
@@ -54,7 +55,7 @@ class EEGDataset(Dataset):
         return sum(self.data_points)
 
     # change so it doesn't load the whole thing and cache the current subject for fast access
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         idx_epoch, idx_inner = self.convert_to_idx(idx)
         return self.epochs_list[idx_epoch].get_data()[idx_inner], self.y_list[idx_epoch]
 
