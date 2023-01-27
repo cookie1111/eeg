@@ -69,6 +69,7 @@ class EEGDataset(Dataset):
 
             idx = idx + 1
 
+    # TODO add option to save epochs to disk and load them
     def load_data(self):
         for subject in self.subjects.itertuples():
             subject_path = os.path.join(self.root_dir, subject.participant_id)
@@ -101,6 +102,7 @@ class EEGDataset(Dataset):
                     rest_events = mne.make_fixed_length_events(raw, id=1, duration=2, overlap=1.9)
                     print(self.tstart,self.tend)
                     if self.cur is None:
+                        #if
                         self.cur = rest_epochs = mne.Epochs(raw,
                                                             rest_events,
                                                             1,
@@ -114,6 +116,7 @@ class EEGDataset(Dataset):
                                                  self.tstart,
                                                  self.tend,
                                                  baseline=None).drop_bad()
+                    #mne.save(os.path.join(subject_path,'saved_epoch.fif', overwrite=True), rest_epochs)
             else:
                 eeg_file1 = os.path.join(subject_path1, [f for f in os.listdir(subject_path1) if f.endswith('.set')][0])
                 raw1 = mne.io.read_raw_eeglab(eeg_file1)
