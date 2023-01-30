@@ -19,7 +19,7 @@ from torch.utils.data import Dataset, DataLoader
 # if person has 2 ses folders it means its a patient else its a control
 class EEGDataset(Dataset):
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
-                 tend: int = 30, special_part: str = None, medicated: int = 0):
+                 tend: int = 30, special_part: str = None, medicated: int = 0, cache_amount: int = 1):
         """
         Grab all subjects, for now only the medicated session is supported, add a class field to the whole thing and
         window their eeg signal slice(slice is based off special_part parameter). Windows are accessed via index, and
@@ -47,9 +47,12 @@ class EEGDataset(Dataset):
         self.subjects = pd.read_table(os.path.join(root_dir, participants))
         self.epochs_list = None
         self.y_list = []
-        self.cur = None
+        # holds first 2 epochs loads a new one when we are at the end of the first one should be queue
+        # cur holds end of epoch index and the epoch itself
+        self.cache = []
         self.data_points = []
         self.load_data()
+        self.cache_size = cache_amount
 
     def __len__(self):
         return sum(self.data_points)
@@ -71,6 +74,8 @@ class EEGDataset(Dataset):
 
     # TODO add option to save epochs to disk and load them
     def load_data(self):
+        cached = 0
+        self.cache = []
         for subject in self.subjects.itertuples():
             subject_path = os.path.join(self.root_dir, subject.participant_id)
             # subject class, if its 0 the subject has PD if 1 its a control
@@ -101,14 +106,24 @@ class EEGDataset(Dataset):
                 if not self.special_part:
                     rest_events = mne.make_fixed_length_events(raw, id=1, duration=2, overlap=1.9)
                     print(self.tstart,self.tend)
-                    if self.cur is None:
-                        #if
-                        self.cur = rest_epochs = mne.Epochs(raw,
-                                                            rest_events,
-                                                            1,
-                                                            self.tstart,
-                                                            self.tend,
-                                                            baseline=None).drop_bad()
+                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_epo.fif")
+                    if len(self.cache) < self.cache_size:
+                        if os.path.isfile(save_dest):
+                            rest_epochs = mne.read_epochs(save_dest)
+                        else:
+                            rest_epochs = mne.Epochs(raw,
+                                                     rest_events,
+                                                     1,
+                                                     self.tstart,
+                                                     self.tend,
+                                                     baseline=None).drop_bad()
+
+                            rest_epochs.save(save_dest)
+                        # have index saved for easier cache checking
+                        self.cache.append((len(rest_epochs)+0 if len(self.cache) == 0 else self.cache[-1][0],
+                                           rest_epochs))
+
+                        self.epochs_list.append(save_dest)
                     else:
                         rest_epochs = mne.Epochs(raw,
                                                  rest_events,
@@ -123,9 +138,9 @@ class EEGDataset(Dataset):
                 eeg_file2 = os.path.join(subject_path2, [f for f in os.listdir(subject_path2) if f.endswith('.set')][0])
                 raw2 = mne.io.read_raw_eeglab(eeg_file2)
 
-            #TODO fix so its not a python list but a numpy array!!!
             if self.epochs_list is None:
                 print("ye")
+                #need to save filenames here
                 self.epochs_list = [rest_epochs]
                 self.data_points = [len(rest_epochs)]
             else:
