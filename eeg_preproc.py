@@ -51,8 +51,8 @@ class EEGDataset(Dataset):
         # cur holds end of epoch index and the epoch itself
         self.cache = []
         self.data_points = []
-        self.load_data()
         self.cache_size = cache_amount
+        self.load_data()
 
     def __len__(self):
         return sum(self.data_points)
@@ -216,4 +216,4 @@ class Participants_Dataset(Dataset):
 
 if __name__ == '__main__':
     dset = EEGDataset("/home/sebastjan/PycharmProjects/eeg/ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=240)
+                      tstart=0, tend=30)
