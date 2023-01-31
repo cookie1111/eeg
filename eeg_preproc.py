@@ -102,6 +102,8 @@ class EEGDataset(Dataset):
                 eeg_file = os.path.join(subject_path_eeg,
                                         [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
                 raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
+                # TODO need to perform filtering and some sort of artifact correction! still getting all except one
+                # epoch rejected
                 low_cut = 0.1
                 hi_cut = 30
                 raw.filter(low_cut, hi_cut)
