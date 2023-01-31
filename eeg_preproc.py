@@ -45,7 +45,7 @@ class EEGDataset(Dataset):
         self.medicated = medicated
         self.ids = id_column
         self.subjects = pd.read_table(os.path.join(root_dir, participants))
-        self.epochs_list = None
+        self.epochs_list = []
         self.y_list = []
         # holds first 2 epochs loads a new one when we are at the end of the first one should be queue
         # cur holds end of epoch index and the epoch itself
@@ -217,4 +217,4 @@ class Participants_Dataset(Dataset):
 
 if __name__ == '__main__':
     dset = EEGDataset("/home/sebastjan/PycharmProjects/eeg/ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=10)
+                      tstart=0, tend=240)
