@@ -102,6 +102,7 @@ class EEGDataset(Dataset):
                 eeg_file = os.path.join(subject_path_eeg,
                                         [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
                 raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
+                raw.crop(tmin=self.tstart, tmax=self.tend)
 
                 if not self.special_part:
                     rest_events = mne.make_fixed_length_events(raw, id=1, duration=2, overlap=1.9)
@@ -216,4 +217,4 @@ class Participants_Dataset(Dataset):
 
 if __name__ == '__main__':
     dset = EEGDataset("/home/sebastjan/PycharmProjects/eeg/ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=30)
+                      tstart=0, tend=10)
