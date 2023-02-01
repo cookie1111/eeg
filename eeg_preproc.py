@@ -102,46 +102,38 @@ class EEGDataset(Dataset):
                 print(subject_path_eeg)
                 eeg_file = os.path.join(subject_path_eeg,
                                         [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
-                raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
-                # TODO need to perform filtering and some sort of artifact correction! still getting all except one
-                # epoch rejected
-                low_cut = 0.1
-                hi_cut = 30
-                raw.filter(low_cut, hi_cut)
-                raw = raw.crop(tmin=self.tstart, tmax=self.tend)
-                arr = raw.get_data()
 
-                print(arr.dtype)
+
+
+
                 if not self.special_part:
-                    rest_events = mne.make_fixed_length_events(raw, id=1, duration=2, overlap=1.9)
+
                     print(self.tstart,self.tend)
                     save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif")
+                    if os.path.isfile(save_dest):
+                        rest_epochs = mne.read_epochs(save_dest)
+                    else:
+                        raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
+                        low_cut = 0.1
+                        hi_cut = 30
+                        raw = raw.filter(low_cut, hi_cut)
+                        raw = raw.crop(tmin=self.tstart, tmax=self.tend)
+                        raw = raw.drop_channels(["X", "Y", "Z"])
+                        rest_epochs = mne.make_fixed_length_epochs(raw,duration=2, overlap=1.9).drop_bad()
+                        rest_epochs.save(save_dest)
                     if len(self.cache) < self.cache_size:
-                        #if os.path.isfile(save_dest):
-                        #    rest_epochs = mne.read_epochs(save_dest)
-                        #else:
-                        rest_epochs = mne.Epochs(raw,
+
+                        """rest_epochs = mne.Epochs(raw,
                                                  rest_events,
                                                  1,
                                                  self.tstart,
                                                  self.tend,
-                                                 baseline=(None, None)).drop_bad()
+                                                 baseline=(None, None)).drop_bad()"""
                         print(f"________WRITING TO {save_dest}________")
-                        rest_epochs.save(save_dest,overwrite=True)
                         # have index saved for easier cache checking
                         self.cache.append((len(rest_epochs)+0 if len(self.cache) == 0 else self.cache[-1][0],
                                            rest_epochs))
 
-                        self.epochs_list.append(save_dest)
-                        rest_epochs = mne.Epochs(raw,
-                                                 rest_events,
-                                                 1,
-                                                 self.tstart,
-                                                 self.tend,
-                                                 baseline=(None, None)).drop_bad()
-                    else:
-                        rest_epochs.save(save_dest, overwrite=True)
-                        self.epochs_list.append(save_dest)
                     #mne.save(os.path.join(subject_path,'saved_epoch.fif', overwrite=True), rest_epochs)
             else:
                 eeg_file1 = os.path.join(subject_path1, [f for f in os.listdir(subject_path1) if f.endswith('.set')][0])
@@ -152,11 +144,11 @@ class EEGDataset(Dataset):
             if self.epochs_list is None:
                 print("ye")
                 #need to save filenames here
-                self.epochs_list = [rest_epochs]
+                self.epochs_list = [save_dest]
                 self.data_points = [len(rest_epochs)]
             else:
                 print("nay")
-                self.epochs_list.append(rest_epochs)
+                self.epochs_list.append(save_dest)
                 self.data_points.append(len(rest_epochs))
 
             self.y_list.append(y)
