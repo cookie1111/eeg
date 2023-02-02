@@ -40,11 +40,13 @@ class EEGDataset(Dataset):
         medicated and off-medication data.
         """
         self.root_dir = root_dir
+        self.participants = participants
         self.tstart = tstart
         self.tend = tend
         self.special_part = special_part
         self.medicated = medicated
         self.ids = id_column
+        # TODO add length of epoch based on name of epoch file
         self.subjects = pd.read_table(os.path.join(root_dir, participants))
         self.epochs_list = []
         self.y_list = []
@@ -75,7 +77,10 @@ class EEGDataset(Dataset):
 
     # TODO add option to save epochs to disk and load them
     def load_data(self):
-        cached = 0
+        #check if column exists for name of file
+        fresh_entries = True
+        if f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif" in self.subjects:
+            fresh_entries =False
         self.cache = []
         for subject in self.subjects.itertuples():
             subject_path = os.path.join(self.root_dir, subject.participant_id)
@@ -103,15 +108,12 @@ class EEGDataset(Dataset):
                 eeg_file = os.path.join(subject_path_eeg,
                                         [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
 
-
-
-
                 if not self.special_part:
-
                     print(self.tstart,self.tend)
                     save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif")
                     if os.path.isfile(save_dest):
-                        rest_epochs = mne.read_epochs(save_dest)
+                        if fresh_entries:
+                            rest_epochs = mne.read_epochs(save_dest)
                     else:
                         raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
                         low_cut = 0.1
@@ -129,9 +131,10 @@ class EEGDataset(Dataset):
                                                  self.tstart,
                                                  self.tend,
                                                  baseline=(None, None)).drop_bad()"""
-                        print(f"________WRITING TO {save_dest}________")
+                        print(f"Caching {len(self.cache)+1}/{self.cache_size}")
                         # have index saved for easier cache checking
-                        self.cache.append((len(rest_epochs)+0 if len(self.cache) == 0 else self.cache[-1][0],
+                        rest_epochs = mne.read_epochs(save_dest)
+                        self.cache.append((len(rest_epochs) + (0 if len(self.cache) == 0 else self.cache[-1][0]),
                                            rest_epochs))
 
                     #mne.save(os.path.join(subject_path,'saved_epoch.fif', overwrite=True), rest_epochs)
@@ -145,13 +148,22 @@ class EEGDataset(Dataset):
                 print("ye")
                 #need to save filenames here
                 self.epochs_list = [save_dest]
-                self.data_points = [len(rest_epochs)]
+                if fresh_entries:
+                    self.data_points = [len(rest_epochs)]
+                else:
+                    self.data_points = subject[f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif"]
             else:
                 print("nay")
                 self.epochs_list.append(save_dest)
-                self.data_points.append(len(rest_epochs))
+                if fresh_entries:
+                    self.data_points.append(len(rest_epochs))
+                else:
+                    self.data_points.append(subject[f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif"])
 
             self.y_list.append(y)
+        if fresh_entries:
+            self.subjects[f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif"] = self.data_points
+            self.subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False)
 
 
 if __name__ == '__main__':
