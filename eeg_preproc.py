@@ -79,7 +79,8 @@ class EEGDataset(Dataset):
     def load_data(self):
         #check if column exists for name of file
         fresh_entries = True
-        if f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif" in self.subjects:
+        f_name = f"lens_{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo"
+        if f_name in self.subjects:
             fresh_entries =False
         self.cache = []
         for subject in self.subjects.itertuples():
@@ -151,19 +152,18 @@ class EEGDataset(Dataset):
                 if fresh_entries:
                     self.data_points = [len(rest_epochs)]
                 else:
-                    self.data_points = subject[f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif"]
+                    self.data_points.append(eval('subject.'+f_name))
             else:
                 print("nay")
                 self.epochs_list.append(save_dest)
                 if fresh_entries:
                     self.data_points.append(len(rest_epochs))
                 else:
-                    self.data_points.append(subject[f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif"])
-
+                    self.data_points.append(eval('subject.'+f_name))
             self.y_list.append(y)
         if fresh_entries:
-            self.subjects[f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif"] = self.data_points
-            self.subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False)
+            self.subjects[f_name] = self.data_points
+            self.subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False, na_rep="nan")
 
 
 if __name__ == '__main__':
