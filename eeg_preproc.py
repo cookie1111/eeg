@@ -79,8 +79,8 @@ class EEGDataset(Dataset):
         elif idx_epoch + 1 < idx_next_epoch:
             self.cache_pos = idx_epoch
             self.load_particular_epoch(idx_epoch)
-        print(self.cache)
-        return self.cache[idx_epoch-self.cache_pos][1][idx_inner].get_data(), self.y_list[idx_epoch]
+        # print(self.cache)
+        return self.cache[idx_epoch-self.cache[0][0]][1][idx_inner].get_data(), self.y_list[idx_epoch]
         # return self.epochs_list[idx_epoch].get_data()[idx_inner], self.y_list[idx_epoch]
 
     def convert_to_idx(self, index):
