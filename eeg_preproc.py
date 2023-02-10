@@ -55,6 +55,7 @@ class EEGDataset(Dataset):
         # holds first 2 epochs loads a new one when we are at the end of the first one should be queue
         # cur holds end of epoch index and the epoch itself
         self.cache = []
+        self.cache_pos = 0
         self.data_points = []
         self.cache_size = cache_amount
         self.load_data()
@@ -68,9 +69,11 @@ class EEGDataset(Dataset):
         idx_next_epoch, idx_inner = self.convert_to_idx(idx+self.batch_size)
         if idx_epoch + 1 == idx_next_epoch:
             self.load_next_epoch(idx_next_epoch)
+        # random access VERY INEFFICIENT
         elif idx_epoch + 1 < idx_next_epoch:
-
-        return self.cache[]
+            self.cache_pos = idx_epoch
+            self.cache = [mne.io.read_raw_eeglab(self.epochs_list[idx_epoch])]
+        return self.cache[idx_epoch-self.cache_pos][1][idx_inner]
         # return self.epochs_list[idx_epoch].get_data()[idx_inner], self.y_list[idx_epoch]
 
     def convert_to_idx(self, index):
@@ -111,14 +114,14 @@ class EEGDataset(Dataset):
                 subject_path1 = os.path.join(subject_path, "ses-01")
                 subject_path2 = os.path.join(subject_path, "ses-02")
             if not self.medicated == 2:
-                print(subject_path)
+                # print(subject_path)
                 subject_path_eeg = os.path.join(subject_path,os.listdir(subject_path)[0])
-                print(subject_path_eeg)
+                # print(subject_path_eeg)
                 eeg_file = os.path.join(subject_path_eeg,
                                         [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
 
                 if not self.special_part:
-                    print(self.tstart,self.tend)
+                    # print(self.tstart,self.tend)
                     save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif")
                     if os.path.isfile(save_dest):
                         if fresh_entries:
@@ -154,7 +157,7 @@ class EEGDataset(Dataset):
                 raw2 = mne.io.read_raw_eeglab(eeg_file2)
 
             if self.epochs_list is None:
-                print("ye")
+                # print("ye")
                 #need to save filenames here
                 self.epochs_list = [save_dest]
                 if fresh_entries:
@@ -162,7 +165,7 @@ class EEGDataset(Dataset):
                 else:
                     self.data_points.append(eval('subject.'+f_name))
             else:
-                print("nay")
+                # print("nay")
                 self.epochs_list.append(save_dest)
                 if fresh_entries:
                     self.data_points.append(len(rest_epochs))
@@ -177,6 +180,7 @@ class EEGDataset(Dataset):
         #if the queue is larger than len(self.epochs_list) then remove the first one
         if len(self.epochs_list) > self.cache_size:
             self.cache.pop()
+            self.cache_pos = self.cache_pos + 1
         epoch = mne.io.read_raw_eeglab(self.epochs_list[idx_next_epoch])
         self.cache.append((len(epoch) + self.cache[-1][0]),
                            epoch)
@@ -188,6 +192,7 @@ class EEGDataset(Dataset):
         self.cache = [l, epoch]
 
 if __name__ == '__main__':
-    dset = EEGDataset("/home/sebastjan/Documents/eeg/ds003490", participants="participants.tsv",
+    dset = EEGDataset("./ds003490-download", participants="participants.tsv",
                       tstart=0, tend=240, cache_amount=3)
-
+    print(dset[0])
+    print(dset[3400])

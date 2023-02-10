@@ -1,0 +1,1 @@
+#resnet input is 224*224*3 -> ResNet18
