@@ -65,14 +65,15 @@ class EEGDataset(Dataset):
     def __len__(self):
         return sum(self.data_points)
 
-    # change so it doesn't load the whole thing and cache the current subject for fast access
-
+    # caching needs to be redone, need to cache based on current epoch and need to check what is already cached when
+    # adding new epochs
+    # cache could hold epochs index not the index of the starting datapoint
     def __getitem__(self, idx: int):
         idx_epoch, idx_inner = self.convert_to_idx(idx)
         idx_next_epoch, idx_inner = self.convert_to_idx(idx+self.batch_size)
         if idx_epoch + 1 == idx_next_epoch and not self.semafor:
             self.semafor = True
-            self.load_next_epoch(idx_next_epoch)
+            self.load_next_epoch(idx_epoch+self.cache_size)
             self.semafor = False
         # random access VERY INEFFICIENT
         elif idx_epoch + 1 < idx_next_epoch:
@@ -94,6 +95,7 @@ class EEGDataset(Dataset):
 
     # TODO add option to save epochs to disk and load them
     def load_data(self):
+        cnt = 0
         #check if column exists for name of file
         fresh_entries = True
         f_name = f"lens_{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo"
@@ -149,11 +151,10 @@ class EEGDataset(Dataset):
                                                  self.tstart,
                                                  self.tend,
                                                  baseline=(None, None)).drop_bad()"""
-                        print(f"Caching {len(self.cache)+1}/{self.cache_size}")
+                        # print(f"Caching {len(self.cache)+1}/{self.cache_size}")
                         # have index saved for easier cache checking
                         rest_epochs = mne.read_epochs(save_dest)
-                        self.cache.append((len(rest_epochs) + (0 if len(self.cache) == 0 else self.cache[-1][0]),
-                                           rest_epochs))
+                        self.cache.append((len(self.epochs_list), rest_epochs))
 
                     #mne.save(os.path.join(subject_path,'saved_epoch.fif', overwrite=True), rest_epochs)
             else:
@@ -182,15 +183,17 @@ class EEGDataset(Dataset):
             self.subjects[f_name] = self.data_points
             self.subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False, na_rep="nan")
 
-    def load_next_epoch(self, idx_next_epoch):
-        print(f"loading epoch {idx_next_epoch} from {self.epochs_list[idx_next_epoch]}")
+    def load_next_epoch(self, epoch_to_load):
+        if self.cache[-1][0] == epoch_to_load:
+            # epoch is already loaded
+            print(f"epoch {epoch_to_load} is already cached")
+            return None
+        print(f"loading epoch {epoch_to_load} from {self.epochs_list[self.cache[-1][0]+1]}, highest epoch is {self.cache[-1][0]}")
         #if the queue is larger than len(self.epochs_list) then remove the first one
         if len(self.epochs_list) > self.cache_size:
-            self.cache.pop()
-            self.cache_pos = self.cache_pos + 1
-        epoch = mne.read_epochs(self.epochs_list[idx_next_epoch])
-        self.cache.append(((len(epoch) + self.cache[-1][0]),
-                           epoch))
+            self.cache.pop(0)
+        epoch = mne.read_epochs(self.epochs_list[epoch_to_load])
+        self.cache.append((epoch_to_load, epoch))
 
     #this is extremely inefficient!!!! dataset shouldn't be random accessed!
     def load_particular_epoch(self, idx_epoch):
