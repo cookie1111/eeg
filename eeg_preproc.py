@@ -20,7 +20,8 @@ from torch.utils.data import Dataset, DataLoader
 # if person has 2 ses folders it means its a patient else its a control
 class EEGDataset(Dataset):
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
-                 tend: int = 30, special_part: str = None, medicated: int = 0, cache_amount: int = 1, batch_size: int = 16):
+                 tend: int = 30, special_part: str = None, medicated: int = 0, cache_amount: int = 1,
+                 batch_size: int = 16):
         """
         Grab all subjects, for now only the medicated session is supported, add a class field to the whole thing and
         window their eeg signal slice(slice is based off special_part parameter). Windows are accessed via index, and
@@ -59,21 +60,25 @@ class EEGDataset(Dataset):
         self.data_points = []
         self.cache_size = cache_amount
         self.load_data()
+        self.semafor = False
 
     def __len__(self):
         return sum(self.data_points)
 
     # change so it doesn't load the whole thing and cache the current subject for fast access
+
     def __getitem__(self, idx: int):
         idx_epoch, idx_inner = self.convert_to_idx(idx)
         idx_next_epoch, idx_inner = self.convert_to_idx(idx+self.batch_size)
-        if idx_epoch + 1 == idx_next_epoch:
+        if idx_epoch + 1 == idx_next_epoch and not self.semafor:
+            self.semafor = True
             self.load_next_epoch(idx_next_epoch)
+            self.semafor = False
         # random access VERY INEFFICIENT
         elif idx_epoch + 1 < idx_next_epoch:
             self.cache_pos = idx_epoch
-            self.cache = [mne.io.read_raw_eeglab(self.epochs_list[idx_epoch])]
-        return self.cache[idx_epoch-self.cache_pos][1][idx_inner]
+            self.load_particular_epoch(idx_epoch)
+        return self.cache[idx_epoch-self.cache_pos][1][idx_inner].get_data(), self.y_list[idx_epoch]
         # return self.epochs_list[idx_epoch].get_data()[idx_inner], self.y_list[idx_epoch]
 
     def convert_to_idx(self, index):
@@ -177,22 +182,31 @@ class EEGDataset(Dataset):
             self.subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False, na_rep="nan")
 
     def load_next_epoch(self, idx_next_epoch):
+        print(f"loading epoch {idx_next_epoch} from {self.epochs_list[idx_next_epoch]}")
         #if the queue is larger than len(self.epochs_list) then remove the first one
         if len(self.epochs_list) > self.cache_size:
             self.cache.pop()
             self.cache_pos = self.cache_pos + 1
-        epoch = mne.io.read_raw_eeglab(self.epochs_list[idx_next_epoch])
-        self.cache.append((len(epoch) + self.cache[-1][0]),
-                           epoch)
+        epoch = mne.read_epochs(self.epochs_list[idx_next_epoch])
+        self.cache.append(((len(epoch) + self.cache[-1][0]),
+                           epoch))
 
     #this is extremely inefficient!!!! dataset shouldn't be random accessed!
     def load_particular_epoch(self, idx_epoch):
         l = sum(self.data_points[:idx_epoch])
-        epoch = mne.io.read_raw_eeglab(self.epochs_list[idx_epoch])
+        epoch = mne.read_epochs(self.epochs_list[idx_epoch])
         self.cache = [l, epoch]
 
 if __name__ == '__main__':
     dset = EEGDataset("./ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=240, cache_amount=3)
-    print(dset[0])
-    print(dset[3400])
+                      tstart=0, tend=240, cache_amount=2, batch_size=8)
+    for i in range(10000):
+        dset[i]
+        print(i)
+    """
+    dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
+    cnt = 0
+    for i in dloader:
+        print(cnt)
+        cnt = cnt+1
+    """
