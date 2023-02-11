@@ -70,7 +70,11 @@ class EEGDataset(Dataset):
     # cache could hold epochs index not the index of the starting datapoint
     def __getitem__(self, idx: int):
         idx_epoch, idx_inner = self.convert_to_idx(idx)
-        idx_next_epoch, idx_inner = self.convert_to_idx(idx+self.batch_size)
+        if idx_epoch + 1 < len(self.epochs_list):
+            idx_next_epoch, idx_next_inner = self.convert_to_idx(idx+self.batch_size)
+        else:
+            idx_next_epoch = idx_epoch
+            idx_next_inner = idx_inner
         if idx_epoch + 1 == idx_next_epoch and not self.semafor:
             self.semafor = True
             self.load_next_epoch(idx_epoch+self.cache_size)
@@ -188,6 +192,9 @@ class EEGDataset(Dataset):
             # epoch is already loaded
             print(f"epoch {epoch_to_load} is already cached")
             return None
+        if self.cache[-1][0] +1 == len(self.epochs_list):
+            print(f"Last epoch already cached")
+            return None
         print(f"loading epoch {epoch_to_load} from {self.epochs_list[self.cache[-1][0]+1]}, highest epoch is {self.cache[-1][0]}")
         #if the queue is larger than len(self.epochs_list) then remove the first one
         if len(self.epochs_list) > self.cache_size:
@@ -207,5 +214,6 @@ if __name__ == '__main__':
     dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
     cnt = 0
     for i in dloader:
-        print(cnt)
+        #print(cnt)
         cnt = cnt+1
+    print("Done")
