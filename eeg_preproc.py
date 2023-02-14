@@ -3,7 +3,7 @@ from scipy.signal import cwt, morlet2
 import matplotlib.pyplot as plt
 from mne.io import read_raw_eeglab, read_raw_brainvision
 from torch.utils.data import DataLoader, Dataset
-from typing import Literal
+from typing import Literal, Tuple
 from pathlib import Path
 import pandas as pd
 
@@ -12,6 +12,7 @@ import mne
 mne.set_log_level("DEBUG")
 import torch
 from torch.utils.data import Dataset, DataLoader
+from math import ceil
 
 
 # first session is without medication
@@ -21,7 +22,7 @@ from torch.utils.data import Dataset, DataLoader
 class EEGDataset(Dataset):
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
                  tend: int = 30, special_part: str = None, medicated: int = 0, cache_amount: int = 1,
-                 batch_size: int = 16):
+                 batch_size: int = 16, use_index = None):
         """
         Grab all subjects, for now only the medicated session is supported, add a class field to the whole thing and
         window their eeg signal slice(slice is based off special_part parameter). Windows are accessed via index, and
@@ -51,6 +52,8 @@ class EEGDataset(Dataset):
         self.medicated = medicated
         self.ids = id_column
         self.subjects = pd.read_table(os.path.join(root_dir, participants))
+        if use_index is not None:
+            self.subjects = self.subjects.iloc[use_index]
         self.epochs_list = []
         self.y_list = []
         # holds first 2 epochs loads a new one when we are at the end of the first one should be queue
@@ -61,6 +64,41 @@ class EEGDataset(Dataset):
         self.cache_size = cache_amount
         self.load_data()
         self.semafor = False
+
+    def split(self, ratios: None | float | Tuple[float, float] | Tuple[float, float, float] = 0.8):
+        """
+        splits the dataset into 2 datasets, make sure you set the caching of the higher order dset to what the split
+        datasets will use, keep in mind your memory size! both are held in ram and initialized!! Ratios are used in the
+        sense of previous ratio is the starting index and next ratio is the ending index
+
+        :param ratios: splits in percentiles, the amount of ratios you input will result in that many splits
+        :return: len(ratios)+1 datasets containing indexes based on ratios
+        """
+        if ratios is None:
+            return self
+
+        elif isinstance(ratios, float) or len(ratios) == 1:
+            idx = ceil(len(self.y_list)*ratios)
+            return (EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                               self.medicated,self.cache_size, self.batch_size, use_index=range(idx)),
+                    EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                               self.medicated, self.cache_size, self.batch_size, use_index=range(idx,
+                                                                                                 len(self.y_list))))
+        else:
+            assert isinstance(ratios, tuple)
+            splits = []
+            prev_idx = 0
+            for ratio in ratios:
+                idx = ceil(len(self.y_list) * ratio)
+                splits.append(
+                    EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                    self.medicated, self.cache_size, self.batch_size, use_index=range(prev_idx, idx)))
+                prev_idx = idx
+            splits.append(
+                EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                           self.medicated, self.cache_size, self.batch_size,
+                           use_index=range(prev_idx, len(self.y_list))))
+            return splits
 
     def __len__(self):
         return sum(self.data_points)
@@ -207,6 +245,7 @@ class EEGDataset(Dataset):
         l = sum(self.data_points[:idx_epoch])
         epoch = mne.read_epochs(self.epochs_list[idx_epoch])
         self.cache = [l, epoch]
+
 
 if __name__ == '__main__':
     dset = EEGDataset("./ds003490-download", participants="participants.tsv",
