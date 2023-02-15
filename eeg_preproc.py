@@ -13,6 +13,8 @@ mne.set_log_level("DEBUG")
 import torch
 from torch.utils.data import Dataset, DataLoader
 from math import ceil
+import random 
+
 
 
 # first session is without medication
@@ -42,6 +44,7 @@ class EEGDataset(Dataset):
         medicated and off-medication data.
         :param batch_size: amount of datapoints to be preloaded is used for switching in and loading the next epochs from
         file since they are too large to hold all in RAM
+        :param shuffle: wether to shuffle the participants when reading the dataset
         """
         self.root_dir = root_dir
         self.batch_size = batch_size
@@ -53,7 +56,9 @@ class EEGDataset(Dataset):
         self.ids = id_column
         self.subjects = pd.read_table(os.path.join(root_dir, participants))
         if use_index is not None:
+            print(use_index)
             self.subjects = self.subjects.iloc[use_index]
+        print(self.subjects.head)
         self.epochs_list = []
         self.y_list = []
         # holds first 2 epochs loads a new one when we are at the end of the first one should be queue
@@ -65,25 +70,29 @@ class EEGDataset(Dataset):
         self.load_data()
         self.semafor = False
 
-    def split(self, ratios: None | float | Tuple[float, float] | Tuple[float, float, float] = 0.8):
+    def split(self, ratios: None | float | Tuple[float, float] | Tuple[float, float, float] = 0.8, shuffle: bool = False):
         """
         splits the dataset into 2 datasets, make sure you set the caching of the higher order dset to what the split
         datasets will use, keep in mind your memory size! both are held in ram and initialized!! Ratios are used in the
         sense of previous ratio is the starting index and next ratio is the ending index
 
         :param ratios: splits in percentiles, the amount of ratios you input will result in that many splits
+        :param shuffle: wether to shuffle the participants befor splitting (not necessary if the original dataset is already shuffeled)
         :return: len(ratios)+1 datasets containing indexes based on ratios
         """
+        shuffled_idxes =  list(range(len(self.y_list)))
+        if shuffle:
+            random.shuffle(shuffled_idxes)
         if ratios is None:
             return self
-
+        
         elif isinstance(ratios, float) or len(ratios) == 1:
             idx = ceil(len(self.y_list)*ratios)
+
             return (EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                               self.medicated,self.cache_size, self.batch_size, use_index=range(idx)),
+                self.medicated,self.cache_size, self.batch_size, use_index=shuffled_idxes[:idx]),
                     EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                               self.medicated, self.cache_size, self.batch_size, use_index=range(idx,
-                                                                                                 len(self.y_list))))
+                               self.medicated, self.cache_size, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)]))
         else:
             assert isinstance(ratios, tuple)
             splits = []
@@ -92,20 +101,17 @@ class EEGDataset(Dataset):
                 idx = ceil(len(self.y_list) * ratio)
                 splits.append(
                     EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                    self.medicated, self.cache_size, self.batch_size, use_index=range(prev_idx, idx)))
+                    self.medicated, self.cache_size, self.batch_size, use_index=shuffled_idxes[prev_idx: idx]))
                 prev_idx = idx
             splits.append(
                 EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                            self.medicated, self.cache_size, self.batch_size,
-                           use_index=range(prev_idx, len(self.y_list))))
+                           use_index=shuffled_idxes[prev_idx: len(self.y_list)]))
             return splits
 
     def __len__(self):
         return sum(self.data_points)
 
-    # caching needs to be redone, need to cache based on current epoch and need to check what is already cached when
-    # adding new epochs
-    # cache could hold epochs index not the index of the starting datapoint
     def __getitem__(self, idx: int):
         idx_epoch, idx_inner = self.convert_to_idx(idx)
         if idx_epoch + 1 < len(self.epochs_list):
@@ -135,7 +141,6 @@ class EEGDataset(Dataset):
 
             idx = idx + 1
 
-    # TODO add option to save epochs to disk and load them
     def load_data(self):
         cnt = 0
         #check if column exists for name of file
@@ -223,7 +228,8 @@ class EEGDataset(Dataset):
             self.y_list.append(y)
         if fresh_entries:
             self.subjects[f_name] = self.data_points
-            self.subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False, na_rep="nan")
+            subjects = self.subjects.sort_index()
+            subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False, na_rep="nan")
 
     def load_next_epoch(self, epoch_to_load):
         if self.cache[-1][0] == epoch_to_load:
@@ -249,10 +255,11 @@ class EEGDataset(Dataset):
 
 if __name__ == '__main__':
     dset = EEGDataset("./ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=240, cache_amount=2, batch_size=8)
-    dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
-    cnt = 0
-    for i in dloader:
-        #print(cnt)
-        cnt = cnt+1
-    print("Done")
+                      tstart=0, tend=240, cache_amount=1, batch_size=8, )
+
+    dset_train, dset_test = dset.split(0.8, shuffle = True)
+    print(len(dset_train), len(dset_test))
+    print(dset_train.subjects, dset_test.subjects)
+
+    #dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
+    #cnt = 0
