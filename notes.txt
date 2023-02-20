@@ -1,0 +1,19 @@
+sourc: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7242849/
+
+Biomarkers of Parkinsons disease in eeg:
+-> checking beta coherence(higher than healthy) - *scalp surface and basal ganglia: supposedly impairment of dopaminergic tone.
+-> high thalamocortical coherence(higher than healthy) - * thalmus and cortex*: tight anatomical and functional connectivity between the two.
+-> significant increase in activity in - anterior cingulate in (delta)
+-> decreased activity in - temporal lobe(superior/middle temporal gyrus: alpha)
+-> reduced beta in - parahippocampal gyrus, hippocampus
+
+
+-> CWT spectrogram as input to ResNet18, checking for any additional transformations
+
+COHERENCE IS A BIG PART
+
+use morlet wavelet(most similar to eeg)
+
+complex continous wavelet coherence can be used for measuring coherence ebtween the nodes. The compelx part gives information about synchronisation(catching the same signal on different nodes but time shifted) it does not give information for simualtionous signals, which are Volume conduction(name for the same signal being picked up in different nodes) source: https://reader.elsevier.com/reader/sd/pii/S1053810014001299?token=A5D6A5DDE6E61AE4BD7424138A6B029B7D6B101C16394053EEAE088AA930FBBE33C2CA148F92DBE637AECF9BD4A84DAF&originRegion=eu-west-1&originCreation=20230220133634
+
+use the nodes closest to the parts fo the brain containing the biomarkers stated in the excerpt abvoe

@@ -1,3 +1,4 @@
+import mne
 from mne.io import read_raw_eeglab, read_raw_brainvision
 from mne.preprocessing import ICA
 import pandas as pd
@@ -12,23 +13,30 @@ from sklearn.decomposition import fastica
 
 
 if __name__ == '__main__':
-    a = read_raw_eeglab("/home/sebastjan/PycharmProjects/eeg/ds003490-download/sub-050/ses-01/eeg/sub-050_ses-01_task-Rest_eeg.set")
+    a = read_raw_eeglab("/home/sebastjan/PycharmProjects/eeg/ds003490-download/sub-050/ses-01/eeg/sub-050_ses-01_task-Rest_eeg.set", preload=True)
     #a = read_raw_brainvision("/home/sebastjan/PycharmProjects/eeg/eeg/Control1025.vhdr")
+    low_cut = 0.1
+    hi_cut = 30
+    a.filter(low_cut, hi_cut)
     a.plot()
 
 
     # Pergorming ICA on the raw signal
     # guidelines below:
     # https://sccn.ucsd.edu/wiki/Makoto%27s_preprocessing_pipeline#General_tips_for_performing_ICA_.2806.2F26.2F2018_updated.29
-    ic = ICA(30)
-    ic.fit(a)
-
-
+    #ic = ICA(30)
+    #ic.fit(a)
+    eventados = mne.make_fixed_length_events(a, id=1, duration=2, overlap=1.9)
+    epoched = mne.Epochs(a,eventados, event_id=1, preload=True)
+    print("len: ",len(epoched))
+    print(epoched[0],epoched[1])
+    testo = epoched[0:5]
     #ic.plot_sources(a)
     #ic.plot_components()
-
+    print(testo.get_data())
+    print(epoched.get_data().shape)
     df = a.to_data_frame()
-
-    print(df.head)
+    #epoched.save('epoch_test.fif')
+    #print(df.head)
 
     print("stand")
