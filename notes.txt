@@ -12,6 +12,8 @@ Biomarkers of Parkinsons disease in eeg:
 
 COHERENCE IS A BIG PART
 
+coherence calculation: (Appendix) https://paos.colorado.edu/research/wavelets/interdecadal.pdf
+
 use morlet wavelet(most similar to eeg)
 
 complex continous wavelet coherence can be used for measuring coherence ebtween the nodes. The compelx part gives information about synchronisation(catching the same signal on different nodes but time shifted) it does not give information for simualtionous signals, which are Volume conduction(name for the same signal being picked up in different nodes) source: https://reader.elsevier.com/reader/sd/pii/S1053810014001299?token=A5D6A5DDE6E61AE4BD7424138A6B029B7D6B101C16394053EEAE088AA930FBBE33C2CA148F92DBE637AECF9BD4A84DAF&originRegion=eu-west-1&originCreation=20230220133634

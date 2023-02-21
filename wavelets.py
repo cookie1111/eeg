@@ -8,6 +8,7 @@ from scipy.signal import cwt, morlet2
 
 x = np.linspace(0, 1, num=512)
 data = np.sin(250 * np.pi * x**2)
+data2 = np.cos(130 * np.pi * x**2)
 
 wavelet = 'db2'
 level = 4
@@ -48,11 +49,20 @@ ax3.imshow(values, origin='upper', extent=[-1, 1, -1, 1],
 ax3.set_title("Wavelet packet coefficients")
 
 
-plt.show()
+#plt.show()
 
 #taken from pywavelets ^^^
 
 #scipy implementation with cwt:
 
-print(cwt(data, morlet2, np.arange(1, 31)).shape)
+a = np.array(cwt(data, morlet2, np.arange(1, 31)))
+b = np.array(cwt(data2, morlet2, np.arange(1, 31)))
 print(pywt.cwt(data, np.arange(1, 41), 'cmor1.5-1.0')[0].shape)
+print(np.real(a))
+print(a.shape)
+
+# Cross-wavelet sepctrum 
+cs_spect = a*np.conjugate(b)
+print(cs_spect)
+
+# smoothing is performed by a weighted moving average in both dimensions (time and frequency)
