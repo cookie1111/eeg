@@ -70,7 +70,7 @@ print(cs_spect[0,0])
 
 # use a gaussian filter along both axis from the scipy library!
 
-#print(cs_spect[0,0])
+#print(cs_spect[0,0]) TEST
 
 # all of the operations are element wise!!!
 # coherence is: abs(Smooth(cs_spec_xy))^2/(smooth(abs(cs_spec_x)^2)*smooth(abs(cs_spec_y)^2))
