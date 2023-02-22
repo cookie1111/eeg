@@ -4,6 +4,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pywt
+from scipy.ndimage import gaussian_filter
 from scipy.signal import cwt, morlet2
 
 x = np.linspace(0, 1, num=512)
@@ -58,11 +59,23 @@ ax3.set_title("Wavelet packet coefficients")
 a = np.array(cwt(data, morlet2, np.arange(1, 31)))
 b = np.array(cwt(data2, morlet2, np.arange(1, 31)))
 print(pywt.cwt(data, np.arange(1, 41), 'cmor1.5-1.0')[0].shape)
-print(np.real(a))
+print(a[0,0])
 print(a.shape)
 
 # Cross-wavelet sepctrum 
-cs_spect = a*np.conjugate(b)
-print(cs_spect)
+cs_spect = np.multiply(a,np.conjugate(b))
+print(cs_spect[0,0])
 
 # smoothing is performed by a weighted moving average in both dimensions (time and frequency)
+
+# use a gaussian filter along both axis from the scipy library!
+
+#print(cs_spect[0,0])
+
+# all of the operations are element wise!!!
+# coherence is: abs(Smooth(cs_spec_xy))^2/(smooth(abs(cs_spec_x)^2)*smooth(abs(cs_spec_y)^2))
+
+upper = np.square(np.abs(gaussian_filter(cs_spect,(4,4))))
+#lower = gaussian_filter(np.square(np.abs(
+
+print(cs_spect.shape)
