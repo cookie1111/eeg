@@ -14,7 +14,13 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from math import ceil
 import random 
+from wavelets import calculate_cwt_coherence
+"""
+coherence has to be implemented seperatly since we need to do node mixing so i should construct it as a seperate process
 
+NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the transform function to be used in the dataset also i should fix preloading
+
+"""
 
 
 # first session is without medication
