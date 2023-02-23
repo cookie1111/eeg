@@ -7,7 +7,29 @@ import pywt
 from scipy.ndimage import gaussian_filter
 from scipy.signal import cwt, morlet2
 
-x = np.linspace(0, 1, num=512)
+
+# if part == 2 use both im and real, 0-real,1-im,2-both
+def calculate_cwt_coherence(signal1, signal2, wavelet, widths, part=2):
+    a = np.array(cwt(data, morlet2, widths))
+    b = np.array(cwt(data2, morlet2, widths))
+    if part == 0:
+        a = np.real(a)
+        b = np.real(b)
+    elif part == 1:
+        a = np.imag(a)
+        b = np.imag(b)
+
+    cs_spect = np.multiply(a,np.conjugate(b))
+
+    upper = np.square(np.abs(gaussian_filter(cs_spect,(4,4))))
+    lower = gaussian_filter(np.square(np.abs(a)),(4,4))*gaussian_filter(np.square(np.abs(b)),(4,4))
+
+    coherence = np.divide(upper,lower)
+
+    return coherence
+
+
+x = np.linspace(0, 1, num=224)
 data = np.sin(250 * np.pi * x**2)
 data2 = np.cos(130 * np.pi * x**2)
 
@@ -23,7 +45,7 @@ nodes = wp.get_level(level, order=order)
 labels = [n.path for n in nodes]
 values = np.array([n.data for n in nodes], 'd')
 values = abs(values)
-
+"""
 # Show signal and wavelet packet coefficients
 fig = plt.figure()
 fig.subplots_adjust(hspace=0.2, bottom=.03, left=.07, right=.97, top=.92)
@@ -48,7 +70,7 @@ ax3 = fig2.add_subplot(212)
 ax3.imshow(values, origin='upper', extent=[-1, 1, -1, 1],
            interpolation='nearest')
 ax3.set_title("Wavelet packet coefficients")
-
+"""
 
 #plt.show()
 
@@ -56,8 +78,8 @@ ax3.set_title("Wavelet packet coefficients")
 
 #scipy implementation with cwt:
 
-a = np.array(cwt(data, morlet2, np.arange(1, 31)))
-b = np.array(cwt(data2, morlet2, np.arange(1, 31)))
+a = np.array(cwt(data, morlet2, np.arange(1, 100)))
+b = np.array(cwt(data2, morlet2, np.arange(1, 100)))
 print(pywt.cwt(data, np.arange(1, 41), 'cmor1.5-1.0')[0].shape)
 print(a[0,0])
 print(a.shape)
@@ -67,15 +89,19 @@ cs_spect = np.multiply(a,np.conjugate(b))
 print(cs_spect[0,0])
 
 # smoothing is performed by a weighted moving average in both dimensions (time and frequency)
-
 # use a gaussian filter along both axis from the scipy library!
-
-#print(cs_spect[0,0])
 
 # all of the operations are element wise!!!
 # coherence is: abs(Smooth(cs_spec_xy))^2/(smooth(abs(cs_spec_x)^2)*smooth(abs(cs_spec_y)^2))
 
 upper = np.square(np.abs(gaussian_filter(cs_spect,(4,4))))
-#lower = gaussian_filter(np.square(np.abs(
 
-print(cs_spect.shape)
+lower = gaussian_filter(np.square(np.abs(a)),(4,4))*gaussian_filter(np.square(np.abs(b)),(4,4))
+
+coherence = np.divide(upper,lower)
+print(coherence)
+plt.imshow(np.real(a),origin="lower")
+plt.imshow(np.real(b), origin="lower")
+plt.imshow(coherence, origin="lower")
+
+plt.show()
