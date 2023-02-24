@@ -8,6 +8,8 @@ import torch.optim as optim
 
 from eeg_preproc import EEGDataset
 
+# rewrite resnet to use th epretrained model
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class ResBlock(nn.Module):
