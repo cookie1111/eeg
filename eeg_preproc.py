@@ -30,7 +30,7 @@ NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the 
 class EEGDataset(Dataset):
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
                  tend: int = 30, special_part: str = None, medicated: int = 0, cache_amount: int = 1,
-                 batch_size: int = 16, use_index = None):
+                 batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9, stack_rgb = True):
         """
         Grab all subjects, for now only the medicated session is supported, add a class field to the whole thing and
         window their eeg signal slice(slice is based off special_part parameter). Windows are accessed via index, and
@@ -52,6 +52,9 @@ class EEGDataset(Dataset):
         file since they are too large to hold all in RAM
         :param shuffle: wether to shuffle the participants when reading the dataset
         """
+        self.overlap = overlap
+        self.duration = duration
+        self.stack_em = stack_rgb
         self.root_dir = root_dir
         self.batch_size = batch_size
         self.participants = participants
@@ -183,7 +186,10 @@ class EEGDataset(Dataset):
 
                 if not self.special_part:
                     # print(self.tstart,self.tend)
-                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif")
+                    
+                    #save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo_{self.overlap}_{self.duration}.fif")
+                    #os.remove(save_dest)
+                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_epo.fif")
                     if os.path.isfile(save_dest):
                         if fresh_entries:
                             rest_epochs = mne.read_epochs(save_dest)
@@ -194,7 +200,7 @@ class EEGDataset(Dataset):
                         raw = raw.filter(low_cut, hi_cut)
                         raw = raw.crop(tmin=self.tstart, tmax=self.tend)
                         raw = raw.drop_channels(["X", "Y", "Z"])
-                        rest_epochs = mne.make_fixed_length_epochs(raw,duration=2, overlap=1.9).drop_bad()
+                        rest_epochs = mne.make_fixed_length_epochs(raw,duration=self.duration, overlap=self.overlap).drop_bad()
                         rest_epochs.save(save_dest)
                     if len(self.cache) < self.cache_size:
 
@@ -266,6 +272,6 @@ if __name__ == '__main__':
     dset_train, dset_test = dset.split(0.8, shuffle = True)
     print(len(dset_train), len(dset_test))
     print(dset_train.subjects, dset_test.subjects)
-
+    
     #dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
     #cnt = 0

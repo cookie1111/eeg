@@ -147,9 +147,9 @@ def train(model, dloader_train, optimizer, criterion,):
         i = i + 1
 
 if __name__ == "__main__":
-    res = ResNet18WithBlocks(1,18,ResBlock)
-    res = res.double()
-    #res = ResNet18(2,2)
+    #res = ResNet18WithBlocks(1,18,ResBlock)
+    #res = res.double()
+    res = ResNet18(2,2)
     dset = EEGDataset("./ds003490-download", participants="participants.tsv",
                                   tstart=0, tend=240, cache_amount=1, batch_size=8, )
     dtrain, dtest = dset.split(ratios=0.9)
