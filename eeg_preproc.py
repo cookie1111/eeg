@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.signal import cwt, morlet2
+from sklearn.decomposition import FastICA
 import matplotlib.pyplot as plt
 from mne.io import read_raw_eeglab, read_raw_brainvision
 from torch.utils.data import DataLoader, Dataset
@@ -21,6 +22,14 @@ coherence has to be implemented seperatly since we need to do node mixing so i s
 NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the transform function to be used in the dataset also i should fix preloading
 
 """
+
+def numba_(arr, n):
+    res = np.empty((arr.shape[0] * n, arr.shape[0] * n), dtype=np.float64)
+    
+
+
+def custom_ICA_transform( matrix, n_componenets):
+    icad = FastICA(
 
 
 # first session is without medication
@@ -78,6 +87,7 @@ class EEGDataset(Dataset):
         self.cache_size = cache_amount
         self.load_data()
         self.semafor = False
+        self.stack = stack_rgb
 
     def split(self, ratios: None | float | Tuple[float, float] | Tuple[float, float, float] = 0.8, shuffle: bool = False):
         """
@@ -137,9 +147,15 @@ class EEGDataset(Dataset):
             self.cache_pos = idx_epoch
             self.load_particular_epoch(idx_epoch)
         # print(self.cache)
-        return self.cache[idx_epoch-self.cache[0][0]][1][idx_inner].get_data(), self.y_list[idx_epoch]
+        return self.transform(self.cache[idx_epoch-self.cache[0][0]][1][idx_inner].get_data(), self.stack), self.y_list[idx_epoch]
         # return self.epochs_list[idx_epoch].get_data()[idx_inner], self.y_list[idx_epoch]
 
+    def transform(self, image, transform):
+        print(image.shape)
+        # need to reshape the whole thing to be 3*224*224
+        # will do it so that 
+        return image
+    
     def convert_to_idx(self, index):
         suma = 0
         idx = 0
@@ -273,5 +289,8 @@ if __name__ == '__main__':
     print(len(dset_train), len(dset_test))
     print(dset_train.subjects, dset_test.subjects)
     
-    #dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
-    #cnt = 0
+    dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
+    
+    for step, (x,y) in enumerate(dloader):
+        print(step)
+
