@@ -6,7 +6,7 @@ import torchvision.models as models
 from torch.utils.data import DataLoader
 import torch.optim as optim
 
-from eeg_preproc import EEGDataset
+from eeg_preproc import EEGDataset, resizer
 
 # rewrite resnet to use th epretrained model
 
@@ -107,9 +107,9 @@ class ResNet18(nn.Module):
         super(ResNet18, self).__init__()
         resnet = models.resnet18(pretrained=True)
 
-        self.conv1 = nn.Conv2d(1,64,kernel_size=7,stride=2,padding=3,bias=False)
+        #self.conv1 = nn.Conv2d(1,64,kernel_size=7,stride=2,padding=3,bias=False)
 
-        self.conv1.weight= nn.Parameter(resnet.conv1.weight[:,:1,:,:])
+        #self.conv1.weight= nn.Parameter(resnet.conv1.weight[:,:1,:,:])
         
         for param in resnet.parameters():
             param.requires_grad = False
@@ -124,7 +124,7 @@ class ResNet18(nn.Module):
             param.requiers_grad = True
 
     def forward(self, x):
-        print(x.shape)
+        print(x.shape, x.dtype)
         x = self.features(x)
         x = self.classifier(x)
 
@@ -135,6 +135,7 @@ def train(model, dloader_train, optimizer, criterion,):
     i = 0
     for ins, labels in dloader_train:
         ins = ins.double()
+        print(ins.dtype)
         optimizer.zero_grad()
 
         outs = model(ins)
@@ -148,10 +149,10 @@ def train(model, dloader_train, optimizer, criterion,):
 
 if __name__ == "__main__":
     #res = ResNet18WithBlocks(1,18,ResBlock)
-    #res = res.double()
     res = ResNet18(2,2)
+    res = res.double()
     dset = EEGDataset("./ds003490-download", participants="participants.tsv",
-                                  tstart=0, tend=240, cache_amount=1, batch_size=8, )
+                                  tstart=0, tend=240, cache_amount=1, batch_size=8, transform=resizer, trans_args=(224,224))
     dtrain, dtest = dset.split(ratios=0.9)
     del dset
     optimizer = optim.SGD(res.parameters(), lr= 0.01, momentum=0.9)

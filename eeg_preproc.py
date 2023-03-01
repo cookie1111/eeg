@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, Dataset
 from typing import Literal, Tuple
 from pathlib import Path
 import pandas as pd
-
+import cv2
 import os
 import mne
 mne.set_log_level("DEBUG")
@@ -23,14 +23,12 @@ NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the 
 
 """
 
-def numba_(arr, n):
-    res = np.empty((arr.shape[0] * n, arr.shape[0] * n), dtype=np.float64)
-    
-
-
-def custom_ICA_transform( matrix, n_componenets):
-    icad = FastICA(
-
+def resizer(matrix, new_x, new_y):
+    # might have to assert float type
+    #print(f"Matrix is of dtype: {matrix.dtype}")
+    matrix = np.squeeze(matrix)
+    matrix = cv2.resize(matrix,(new_x,new_y))
+    return np.repeat(matrix[np.newaxis,:,:],3,axis=0)
 
 # first session is without medication
 # annotations are already added on the thing first 4mins (til s201 marker is rest state)
@@ -39,7 +37,7 @@ def custom_ICA_transform( matrix, n_componenets):
 class EEGDataset(Dataset):
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
                  tend: int = 30, special_part: str = None, medicated: int = 0, cache_amount: int = 1,
-                 batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9, stack_rgb = True):
+                 batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9, stack_rgb = True, transform = lambda x:x, trans_args = ()):
         """
         Grab all subjects, for now only the medicated session is supported, add a class field to the whole thing and
         window their eeg signal slice(slice is based off special_part parameter). Windows are accessed via index, and
@@ -88,6 +86,8 @@ class EEGDataset(Dataset):
         self.load_data()
         self.semafor = False
         self.stack = stack_rgb
+        self.transform = transform
+        self.trans_args = trans_args
 
     def split(self, ratios: None | float | Tuple[float, float] | Tuple[float, float, float] = 0.8, shuffle: bool = False):
         """
@@ -109,9 +109,9 @@ class EEGDataset(Dataset):
             idx = ceil(len(self.y_list)*ratios)
 
             return (EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                self.medicated,self.cache_size, self.batch_size, use_index=shuffled_idxes[:idx]),
+                self.medicated,self.cache_size, self.batch_size, use_index=shuffled_idxes[:idx], transform=resizer, trans_args=(224,224)),
                     EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                               self.medicated, self.cache_size, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)]))
+                               self.medicated, self.cache_size, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)],transform=resizer, trans_args=(224,224)))
         else:
             assert isinstance(ratios, tuple)
             splits = []
@@ -147,8 +147,10 @@ class EEGDataset(Dataset):
             self.cache_pos = idx_epoch
             self.load_particular_epoch(idx_epoch)
         # print(self.cache)
-        return self.transform(self.cache[idx_epoch-self.cache[0][0]][1][idx_inner].get_data(), self.stack), self.y_list[idx_epoch]
+        ret =  self.transform(self.cache[idx_epoch-self.cache[0][0]][1][idx_inner].get_data(), *self.trans_args), self.y_list[idx_epoch]
         # return self.epochs_list[idx_epoch].get_data()[idx_inner], self.y_list[idx_epoch]
+        #print(ret[0].shape)
+        return ret
 
     def transform(self, image, transform):
         print(image.shape)
@@ -283,7 +285,7 @@ class EEGDataset(Dataset):
 
 if __name__ == '__main__':
     dset = EEGDataset("./ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=240, cache_amount=1, batch_size=8, )
+                      tstart=0, tend=240, cache_amount=1, batch_size=8,transform=resizer, trans_args=(224,224))
 
     dset_train, dset_test = dset.split(0.8, shuffle = True)
     print(len(dset_train), len(dset_test))
@@ -292,5 +294,6 @@ if __name__ == '__main__':
     dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
     
     for step, (x,y) in enumerate(dloader):
+        print(x.shape, y.shape)
         print(step)
 
