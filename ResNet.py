@@ -1,5 +1,6 @@
 #resnet input is 224*224*3 -> ResNet18
-
+import copy
+import time
 import torch
 import torch.nn as nn
 import torchvision.models as models
@@ -124,28 +125,71 @@ class ResNet18(nn.Module):
             param.requiers_grad = True
 
     def forward(self, x):
-        print(x.shape, x.dtype)
         x = self.features(x)
         x = self.classifier(x)
 
         return x
 
-def train(model, dloader_train, optimizer, criterion,):
-    a = len(dloader_train)
+def train(model, dloader_train, dloader_test, optimizer, criterion, num_epochs=10):
+    start = time.time()
+
+    val_acc_hist = []
+
+    best = copy.deepcopy(model.state_dict())
+    best_acc = 0.0
     i = 0
-    for ins, labels in dloader_train:
-        ins = ins.double()
-        print(ins.dtype)
-        optimizer.zero_grad()
+    for epoch in range(num_epochs):
+        print(f'Epoch {epoch}/{num_epochs-1}')
+        model.train()
+        running_loss = 0.0
+        running_corrects = 0
 
-        outs = model(ins)
-        loss = criterion(outs,labels)
-        loss.backward()
-        optimizer.step()
+        for ins, labels in dloader_train:
+            ins = ins.double()
 
-        if i % 100 == 0:
-            print(f"{i}/{a}")
-        i = i + 1
+            optimizer.zero_grad()
+            with torch.set_grad_enabled(True):
+
+                outs = model(ins)
+                loss = criterion(outs,labels)
+
+                _, preds = torch.max(outs,1)
+
+                loss.backward()
+                optimizer.step()
+            running_loss += loss.item() * ins.size(0)
+            running_corrects += torch.sum(preds == labels.data)
+        epoch_loss = running_loss / len(dloader_train.dataset)
+        epoch_acc = running_corrects.double() / len(dloader_train.dataset)
+        print(f"Train Loss: {epoch_loss} Acc: {epoch_acc}")
+
+        model.eval()
+        running_loss = 0.0
+        running_corrects = 0
+
+        for ins, labels in dloader_test:
+            ins = ins.double()
+
+            optimizer.zero_grad()
+            with torch.set_grad_enabled(False):
+
+                outs = model(ins)
+                loss = criterion(outs,labels)
+
+                _, preds = torch.max(outs,1)
+
+                loss.backward()
+                optimizer.step()
+            running_loss += loss.item() * ins.size(0)
+            running_corrects += torch.sum(preds == labels.data)
+        epoch_loss = running_loss / len(dloader_test.dataset)
+        epoch_acc = running_corrects.double() / len(dloader_test.dataset)
+        print(f"Test Loss: {epoch_loss} Acc: {epoch_acc}")
+        if epoch_acc > best_acc:
+            best_acc = epoch_acc
+            best_model_wts = copy.deepcopy(model.state_dict())
+        val_acc_history.append(epoch_acc)
+
 
 if __name__ == "__main__":
     #res = ResNet18WithBlocks(1,18,ResBlock)
@@ -157,5 +201,5 @@ if __name__ == "__main__":
     del dset
     optimizer = optim.SGD(res.parameters(), lr= 0.01, momentum=0.9)
     criterion = nn.CrossEntropyLoss()
-    train(res,DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),optimizer, criterion)
+    train(res,DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),optimizer, criterion)
 
