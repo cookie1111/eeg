@@ -23,6 +23,9 @@ NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the 
 
 """
 
+#def optical_flow(matrix
+
+
 def resizer(matrix, new_x, new_y):
     # might have to assert float type
     #print(f"Matrix is of dtype: {matrix.dtype}")

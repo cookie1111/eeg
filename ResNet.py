@@ -201,5 +201,5 @@ if __name__ == "__main__":
     del dset
     optimizer = optim.SGD(res.parameters(), lr= 0.01, momentum=0.9)
     criterion = nn.CrossEntropyLoss()
-    train(res,DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),optimizer, criterion)
+    train(res,DataLoader(dtrain, batch_size=8,shuffle=False,num_workers=1),DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),optimizer, criterion)
 
