@@ -298,5 +298,16 @@ if __name__ == '__main__':
     
     for step, (x,y) in enumerate(dloader):
         print(x.shape, y.shape)
+        lino = x[0,:]
+        long_boi = cwt(lino,morlet2,np.arange(1,31))
+        short_boi = cwt(lino,morlet2,np.arange(1,8))
+        fig, axs = plt.subplots(2,2)
+        axs[0,0].imshow(short_boi)
+        axs[0,0].set_title('short_boi')
+        axs[0,1].imshow(long_boi)
+        axs[0,1].set_title('_boi')
+        plt.show()
+        break
+
         print(step)
 
