@@ -33,6 +33,14 @@ def resizer(matrix, new_x, new_y):
     matrix = cv2.resize(matrix,(new_x,new_y))
     return np.repeat(matrix[np.newaxis,:,:],3,axis=0)
 
+def transform_to_cwt(signals, widths, wavelet):
+    new_signals = []
+    for i in signals.shape[0]:
+        new_signals.append(cwt(signals[i,:,:], wavelet, widths))
+
+    return new_signals
+
+
 # first session is without medication
 # annotations are already added on the thing first 4mins (til s201 marker is rest state)
 # S 3 and S 4 are eyes closed, S 1 and S 2 are eyes oepened higher orders are auditory signals
