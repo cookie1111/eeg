@@ -288,8 +288,8 @@ class EEGDataset(Dataset):
 
 if __name__ == '__main__':
     dset = EEGDataset("./ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=240, cache_amount=1, batch_size=8,transform=resizer, trans_args=(224,224))
-
+                      tstart=0, tend=240, cache_amount=1, batch_size=8,)#transform=resizer, trans_args=(224,224))
+    #need to not transform
     dset_train, dset_test = dset.split(0.8, shuffle = True)
     print(len(dset_train), len(dset_test))
     print(dset_train.subjects, dset_test.subjects)
@@ -298,14 +298,21 @@ if __name__ == '__main__':
     
     for step, (x,y) in enumerate(dloader):
         print(x.shape, y.shape)
-        lino = x[0,:]
-        long_boi = cwt(lino,morlet2,np.arange(1,31))
-        short_boi = cwt(lino,morlet2,np.arange(1,8))
-        fig, axs = plt.subplots(2,2)
-        axs[0,0].imshow(short_boi)
-        axs[0,0].set_title('short_boi')
-        axs[0,1].imshow(long_boi)
-        axs[0,1].set_title('_boi')
+        lino = x[0,0,0,:]
+        print(lino.shape, "shapin")
+
+        long_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=23)))
+        short_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=8)))
+        print(long_boi.shape)
+        long_boi = resizer(long_boi,500,500)
+        short_boi = resizer(short_boi,500,500)
+
+
+        fig, axs = plt.subplots(2)
+        axs[0].imshow(short_boi[0,:,:])
+        axs[0].set_title('short_boi')
+        axs[1].imshow(long_boi[0,:,:])
+        axs[1].set_title('_boi')
         plt.show()
         break
 
