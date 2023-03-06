@@ -100,7 +100,7 @@ class EEGDataset(Dataset):
         self.transform = transform
         self.trans_args = trans_args
 
-    def split(self, ratios: None | float | Tuple[float, float] | Tuple[float, float, float] = 0.8, shuffle: bool = False):
+    def split(self, ratios = 0.8, shuffle: bool = False):
         """
         splits the dataset into 2 datasets, make sure you set the caching of the higher order dset to what the split
         datasets will use, keep in mind your memory size! both are held in ram and initialized!! Ratios are used in the
@@ -215,8 +215,9 @@ class EEGDataset(Dataset):
 
                 if not self.special_part:
                     # print(self.tstart,self.tend)
-                    
-                    #save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo_{self.overlap}_{self.duration}.fif")
+                    #save_dest = os.path.join(subject_path_eeg,
+                    #                         f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_epo.fif")
+                    #save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif")
                     #os.remove(save_dest)
                     save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_epo.fif")
                     if os.path.isfile(save_dest):

@@ -97,7 +97,7 @@ class ResNet18WithBlocks(nn.Module):
         x = self.layer4(x)
 
         x = self.avgpool(x)
-        x = torch.flatten(x,1)
+        x = torch.flatten(x, 1)
         x = self.fc(x)
 
         return x
@@ -117,7 +117,7 @@ class ResNet18(nn.Module):
 
         self.features = nn.Sequential(*list(resnet.children())[:-num_last_layers])
         self.classifier = nn.Sequential(
-                nn.AdaptiveAvgPool2d((1,1)),
+                nn.AdaptiveAvgPool2d((1, 1)),
                 nn.Flatten(),
                 nn.Linear(512, num_classes))
 
@@ -130,7 +130,7 @@ class ResNet18(nn.Module):
 
         return x
 
-def train(model, dloader_train, dloader_test, optimizer, criterion, num_epochs=10):
+def train(model, dloader_train, dloader_test, optimizer, criterion, device, num_epochs=10):
     start = time.time()
 
     val_acc_hist = []
@@ -145,7 +145,8 @@ def train(model, dloader_train, dloader_test, optimizer, criterion, num_epochs=1
         running_corrects = 0
 
         for ins, labels in dloader_train:
-            ins = ins.double()
+            ins = ins.to(device).double()
+            labels = labels.to(device)
 
             optimizer.zero_grad()
             with torch.set_grad_enabled(True):
@@ -168,7 +169,8 @@ def train(model, dloader_train, dloader_test, optimizer, criterion, num_epochs=1
         running_corrects = 0
 
         for ins, labels in dloader_test:
-            ins = ins.double()
+            ins = ins.to(device).double()
+            labels = labels.to(device)
 
             optimizer.zero_grad()
             with torch.set_grad_enabled(False):
@@ -190,14 +192,15 @@ def train(model, dloader_train, dloader_test, optimizer, criterion, num_epochs=1
 
 
 if __name__ == "__main__":
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #res = ResNet18WithBlocks(1,18,ResBlock)
-    res = ResNet18(2,2)
+    res = ResNet18(2,2).to(device)
     res = res.double()
     dset = EEGDataset("./ds003490-download", participants="participants.tsv",
                                   tstart=0, tend=240, cache_amount=1, batch_size=8, transform=resizer, trans_args=(224,224))
-    dtrain, dtest = dset.split(ratios=0.9, shuffle=True)
+    dtrain, dtest = dset.split(ratios=0.8, shuffle=True)
     del dset
-    optimizer = optim.SGD(res.parameters(), lr= 0.01, momentum=0.9)
+    optimizer = optim.SGD(res.parameters(), lr=0.01, momentum=0.9)
     criterion = nn.CrossEntropyLoss()
-    train(res,DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),optimizer, criterion)
+    train(res,DataLoader(dtrain, batch_size=8,shuffle=False,num_workers=1),DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),optimizer, criterion,device)
 
