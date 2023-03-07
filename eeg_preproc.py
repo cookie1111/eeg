@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 from scipy.signal import cwt, morlet2
 from sklearn.decomposition import FastICA
 import matplotlib.pyplot as plt
@@ -14,7 +15,7 @@ mne.set_log_level("DEBUG")
 import torch
 from torch.utils.data import Dataset, DataLoader
 from math import ceil
-import random 
+import random
 from wavelets import calculate_cwt_coherence
 """
 coherence has to be implemented seperatly since we need to do node mixing so i should construct it as a seperate process
@@ -99,6 +100,7 @@ class EEGDataset(Dataset):
         self.stack = stack_rgb
         self.transform = transform
         self.trans_args = trans_args
+        self.whole = False
 
     def split(self, ratios = 0.8, shuffle: bool = False):
         """
@@ -115,14 +117,13 @@ class EEGDataset(Dataset):
             random.shuffle(shuffled_idxes)
         if ratios is None:
             return self
-        
+
         elif isinstance(ratios, float) or len(ratios) == 1:
             idx = ceil(len(self.y_list)*ratios)
-
             return (EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                self.medicated,self.cache_size, self.batch_size, use_index=shuffled_idxes[:idx], transform=resizer, trans_args=(224,224)),
+                self.medicated,self.cache_size, self.batch_size, use_index=shuffled_idxes[:idx], transform=self.transform, trans_args=self.trans_args, overlap=self.overlap, duration=self.duration),
                     EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                               self.medicated, self.cache_size, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)],transform=resizer, trans_args=(224,224)))
+                               self.medicated, self.cache_size, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)],transform=self.transform, trans_args=self.trans_args,overlap=self.overlap, duration=self.duration))
         else:
             assert isinstance(ratios, tuple)
             splits = []
@@ -139,11 +140,20 @@ class EEGDataset(Dataset):
                            use_index=shuffled_idxes[prev_idx: len(self.y_list)]))
             return splits
 
+    def preload_whole(self):
+        self.whole = True
+        self.cache = []
+        for epoch in self.epochs_list:
+            self.cache.append(mne.read_epochs(epoch))
+
+
     def __len__(self):
         return sum(self.data_points)
 
     def __getitem__(self, idx: int):
         idx_epoch, idx_inner = self.convert_to_idx(idx)
+        if self.whole:
+            return self.transform(self.cache[idx_epoch][idx_inner].get_data(), *self.trans_args), self.y_list[idx_epoch]
         if idx_epoch + 1 < len(self.epochs_list):
             idx_next_epoch, idx_next_inner = self.convert_to_idx(idx+self.batch_size)
         else:
@@ -163,12 +173,6 @@ class EEGDataset(Dataset):
         #print(ret[0].shape)
         return ret
 
-    def transform(self, image, transform):
-        print(image.shape)
-        # need to reshape the whole thing to be 3*224*224
-        # will do it so that 
-        return image
-    
     def convert_to_idx(self, index):
         suma = 0
         idx = 0
@@ -183,7 +187,8 @@ class EEGDataset(Dataset):
         cnt = 0
         #check if column exists for name of file
         fresh_entries = True
-        f_name = f"lens_{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo"
+        f_name = f"len_{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_epo"
+        f_name = f_name.replace('.','d')
         if f_name in self.subjects:
             fresh_entries =False
         self.cache = []
@@ -215,11 +220,14 @@ class EEGDataset(Dataset):
 
                 if not self.special_part:
                     # print(self.tstart,self.tend)
-                    #save_dest = os.path.join(subject_path_eeg,
-                    #                         f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_epo.fif")
+                    save_dest = os.path.join(subject_path_eeg,
+                                             f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_epo")
                     #save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_epo.fif")
-                    #os.remove(save_dest)
-                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_epo.fif")
+                    save_dest = save_dest.replace('.','#')+'.fif'
+                    if os.path.isfile(save_dest):
+                        os.remove(save_dest)
+                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_epo")
+                    save_dest = save_dest.replace('.','d')+'.fif'
                     if os.path.isfile(save_dest):
                         if fresh_entries:
                             rest_epochs = mne.read_epochs(save_dest)
@@ -294,17 +302,27 @@ class EEGDataset(Dataset):
         epoch = mne.read_epochs(self.epochs_list[idx_epoch])
         self.cache = [l, epoch]
 
+    def clear_cache(self):
+        self.cache = []
+
 
 if __name__ == '__main__':
-    dset = EEGDataset("./ds003490-download", participants="participants.tsv",
+    dset = EEGDataset("ds003490-download", participants="participants.tsv",
                       tstart=0, tend=240, cache_amount=1, batch_size=8,)#transform=resizer, trans_args=(224,224))
     #need to not transform
-    dset_train, dset_test = dset.split(0.8, shuffle = True)
-    print(len(dset_train), len(dset_test))
+    dset_train, dset_train1, dset_test = dset.split((0.4,0.8), shuffle = True)
+    print(len(dset_train),len(dset_train1), len(dset_test))
     print(dset_train.subjects, dset_test.subjects)
-    
+    del dset
+    dset_train1.clear_cache()
+    dset_test.clear_cache()
+
+
+    dset_train.preload_whole()
+
+    sys.exit(0)
     dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
-    
+
     for step, (x,y) in enumerate(dloader):
         print(x.shape, y.shape)
         lino = x[0,0,0,:]
