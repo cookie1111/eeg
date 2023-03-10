@@ -168,6 +168,8 @@ class EEGNpDataset(Dataset):
     def convert_to_idx(self, index):
         suma = 0
         idx = 0
+        if index >= len(self):
+            raise IndexError
         duration = self.duration * self.freq
         overlap = self.overlap * self.freq
         step = duration - overlap
@@ -495,3 +497,5 @@ if __name__ == '__main__':
             """cnt = cnt + 1
             if cnt == t:
                 break"""
+
+    """NEED TO DECIDE WETHER I WANNA SPLIT THE DATASET BY PARTICIPANTS OR BY SIGNALS"""
