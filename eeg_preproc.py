@@ -42,6 +42,7 @@ def transform_to_cwt(signals, widths, wavelet):
     return new_signals
 
 class EEGNpDataset(Dataset):
+
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
                  tend: int = 30, special_part: str = None, medicated: int = 0,
                  batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9,
@@ -78,7 +79,7 @@ class EEGNpDataset(Dataset):
         if f_name in self.subjects:
             fresh_entries=False
 
-        for subject in self.subjects.itertupls():
+        for subject in self.subjects.itertuples():
 
             subject_path = os.path.join(self.root_dir, subject.participant_id)
             # subject class, if its 0 the subject has PD if 1 its a control
@@ -116,7 +117,7 @@ class EEGNpDataset(Dataset):
                         raw = raw.filter(low_cut, hi_cut)
                         raw = raw.crop(tmin=self.tstart, tmax=self.tend)
                         raw = raw.drop_channels(["X", "Y", "Z"])
-                        eeg_nfo = raw.create_info()
+                        eeg_nfo = raw.info
                         print(eeg_nfo.get("hpi_meas"))
                         arr = raw.get_data()
                         np.save(save_dest, arr)
@@ -140,21 +141,28 @@ class EEGNpDataset(Dataset):
             self.subjects[f_name] = self.data_points
             subjects = self.subjects.sort_index()
             subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False, na_rep="nan")
+        print(self.data_points)
 
-    def calc_samples(arr):
-        whole = len(arr)
+    def calc_samples(self, arr):
+        whole = arr.shape[1]
         duration = self.duration*self.freq
         overlap = self.overlap*self.freq
         return int(np.floor((whole-duration)/(duration-overlap)))
 
     def __getitem__(self, idx: int):
+        print(idx)
         duration = self.duration * self.freq
-        idx_subject, idx_inner = self.convert_to_idx(idx)
+        try:
+            idx_subject, idx_inner = self.convert_to_idx(idx)
+        except TypeError:
+            print(idx,duration)
+            print("error encountered something in convert to idx went wrong and the function didn't reach return condition and returned None")
+            sys.exit(1)
+
         return self.transform(self.epochs_list[idx_subject][idx_inner:(idx_inner+duration)])
 
     def __len__(self):
         return sum(self.data_points)
-
 
     def convert_to_idx(self, index):
         suma = 0
@@ -167,6 +175,7 @@ class EEGNpDataset(Dataset):
                 return idx, lower_idx
 
             idx = idx + 1
+
 
 # first session is without medication
 # annotations are already added on the thing first 4mins (til s201 marker is rest state)
@@ -431,43 +440,49 @@ class EEGDataset(Dataset):
     def clear_cache(self):
         self.cache = []
 
-
+TEST = 1
 if __name__ == '__main__':
-    dset = EEGDataset("ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=240, cache_amount=1, batch_size=8,)#transform=resizer, trans_args=(224,224))
-    #need to not transform
-    dset_train, dset_train1, dset_test = dset.split((0.4,0.8), shuffle = True)
-    print(len(dset_train),len(dset_train1), len(dset_test))
-    print(dset_train.subjects, dset_test.subjects)
-    del dset
-    dset_train1.clear_cache()
-    dset_test.clear_cache()
+    if TEST == 0:
+        dset = EEGDataset("ds003490-download", participants="participants.tsv",
+                          tstart=0, tend=240, cache_amount=1, batch_size=8,)#transform=resizer, trans_args=(224,224))
+        #need to not transform
+        dset_train, dset_train1, dset_test = dset.split((0.4,0.8), shuffle = True)
+        print(len(dset_train),len(dset_train1), len(dset_test))
+        print(dset_train.subjects, dset_test.subjects)
+        del dset
+        dset_train1.clear_cache()
+        dset_test.clear_cache()
 
 
-    dset_train.preload_whole()
+        dset_train.preload_whole()
 
-    sys.exit(0)
-    dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
+        sys.exit(0)
+        dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
 
-    for step, (x,y) in enumerate(dloader):
-        print(x.shape, y.shape)
-        lino = x[0,0,0,:]
-        print(lino.shape, "shapin")
+        for step, (x,y) in enumerate(dloader):
+            print(x.shape, y.shape)
+            lino = x[0,0,0,:]
+            print(lino.shape, "shapin")
 
-        long_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=23)))
-        short_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=8)))
-        print(long_boi.shape)
-        long_boi = resizer(long_boi,500,500)
-        short_boi = resizer(short_boi,500,500)
+            long_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=23)))
+            short_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=8)))
+            print(long_boi.shape)
+            long_boi = resizer(long_boi,500,500)
+            short_boi = resizer(short_boi,500,500)
 
 
-        fig, axs = plt.subplots(2)
-        axs[0].imshow(short_boi[0,:,:])
-        axs[0].set_title('short_boi')
-        axs[1].imshow(long_boi[0,:,:])
-        axs[1].set_title('_boi')
-        plt.show()
-        break
+            fig, axs = plt.subplots(2)
+            axs[0].imshow(short_boi[0,:,:])
+            axs[0].set_title('short_boi')
+            axs[1].imshow(long_boi[0,:,:])
+            axs[1].set_title('_boi')
+            plt.show()
+            break
 
-        print(step)
+            print(step)
 
+    elif TEST == 1:
+        ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
+                          tstart=0, tend=240, batch_size=8,)#transform=resizer,trans_args=(224,224))
+        for i in ds:
+            print(i)
