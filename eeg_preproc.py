@@ -158,21 +158,25 @@ class EEGNpDataset(Dataset):
             print(idx,duration)
             print("error encountered something in convert to idx went wrong and the function didn't reach return condition and returned None")
             sys.exit(1)
-
+        print(idx_inner, idx_subject)
         return self.transform(self.epochs_list[idx_subject][idx_inner:(idx_inner+duration)])
 
     def __len__(self):
-        return sum(self.data_points)
+        suma = sum(self.data_points)
+        return suma
 
     def convert_to_idx(self, index):
         suma = 0
         idx = 0
-        step = self.duration - self.overlap
+        duration = self.duration * self.freq
+        overlap = self.overlap * self.freq
+        step = duration - overlap
+        #print(f"printing index:{index}, {step}")
         for i in self.data_points:
             suma = suma + i
             if index < suma:
                 lower_idx = step * index+i-suma
-                return idx, lower_idx
+                return int(idx), int(lower_idx)
 
             idx = idx + 1
 
@@ -484,5 +488,10 @@ if __name__ == '__main__':
     elif TEST == 1:
         ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,)#transform=resizer,trans_args=(224,224))
+        t = 3
+        cnt = 0
         for i in ds:
             print(i)
+            """cnt = cnt + 1
+            if cnt == t:
+                break"""
