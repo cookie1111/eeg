@@ -30,6 +30,7 @@ NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the 
 def resizer(matrix, new_x, new_y):
     # might have to assert float type
     #print(f"Matrix is of dtype: {matrix.dtype}")
+    print(f"shape: {matrix.shape}, new_shapes: {new_x}.{new_y}")
     matrix = np.squeeze(matrix)
     matrix = cv2.resize(matrix,(new_x,new_y))
     return np.repeat(matrix[np.newaxis,:,:],3,axis=0)
@@ -158,8 +159,10 @@ class EEGNpDataset(Dataset):
             print(idx,duration)
             print("error encountered something in convert to idx went wrong and the function didn't reach return condition and returned None")
             sys.exit(1)
-        print(idx_inner, idx_subject)
-        return self.transform(self.epochs_list[idx_subject][idx_inner:(idx_inner+duration)])
+        print(f"schmove: {idx_inner}:{idx_inner+duration}, {idx_subject}")
+        # print(len(self.epochs_list), self.epochs_list[0].shape)
+        return self.transform(self.epochs_list[idx_subject][:, idx_inner:(idx_inner+duration)],
+                              *self.trans_args), self.y_list[idx_subject]
 
     def __len__(self):
         suma = sum(self.data_points)
@@ -173,14 +176,12 @@ class EEGNpDataset(Dataset):
         duration = self.duration * self.freq
         overlap = self.overlap * self.freq
         step = duration - overlap
-        #print(f"printing index:{index}, {step}")
         for i in self.data_points:
-            suma = suma + i
-            if index < suma:
-                lower_idx = step * index+i-suma
-                return int(idx), int(lower_idx)
-
+            if suma + i>index:
+                cur = index-suma
+                return int(idx), int(cur*step)
             idx = idx + 1
+            suma = suma + i
 
 
 # first session is without medication
@@ -489,7 +490,8 @@ if __name__ == '__main__':
 
     elif TEST == 1:
         ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
-                          tstart=0, tend=240, batch_size=8,)#transform=resizer,trans_args=(224,224))
+                          tstart=0, tend=240, batch_size=8,transform=resizer,trans_args=(224,224))
+        dl = DataLoader(ds, batch_size=32,num_workers=1)
         t = 3
         cnt = 0
         for i in ds:
