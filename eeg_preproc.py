@@ -491,10 +491,10 @@ if __name__ == '__main__':
     elif TEST == 1:
         ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,transform=resizer,trans_args=(224,224))
-        dl = DataLoader(ds, batch_size=32,num_workers=1)
+        dl = DataLoader(ds, batch_size=32,num_workers=4,shuffle=True)
         t = 3
         cnt = 0
-        for i in ds:
+        for step, i in enumerate(dl):
             print(i)
             """cnt = cnt + 1
             if cnt == t:
