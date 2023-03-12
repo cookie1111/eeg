@@ -183,6 +183,20 @@ class EEGNpDataset(Dataset):
             idx = idx + 1
             suma = suma + i
 
+    def split(self,ratios=0.8, shuffle=False):
+        shuffled_idxes = list(range(len(self.y_list)))
+
+        if shuffle:
+            random.shuffle(shuffled_idxes)
+        if ratios is None:
+            return self
+        elif isinstance(ratios, float) or len(ratios) == 1:
+            idx = ceil(len(self.y_list)*ratios)
+            return (EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                self.medicated,self.cache_size, self.batch_size, use_index=shuffled_idxes[:idx], transform=self.transform, trans_args=self.trans_args, overlap=self.overlap, duration=self.duration),
+                    EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                               self.medicated, self.cache_size, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)],transform=self.transform, trans_args=self.trans_args,overlap=self.overlap, duration=self.duration))
+        else:
 
 # first session is without medication
 # annotations are already added on the thing first 4mins (til s201 marker is rest state)
