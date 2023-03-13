@@ -119,7 +119,7 @@ class EEGNpDataset(Dataset):
                         arr = np.load(save_dest)
                     else:
                         raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
-                        low_cut = 0.1
+                        low_cut = 1
                         hi_cut = 30
                         raw = raw.filter(low_cut, hi_cut)
                         raw = raw.crop(tmin=self.tstart, tmax=self.tend)
