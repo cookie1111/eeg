@@ -42,6 +42,7 @@ def transform_to_cwt(signals, widths, wavelet):
 
     return new_signals
 
+
 class EEGNpDataset(Dataset):
 
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
@@ -108,7 +109,12 @@ class EEGNpDataset(Dataset):
                                         [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
                 if not self.special_part:
                     save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np")
-                    save_dest = save_dest.replace('.','d')+'.fif'
+                    save_dest = save_dest.replace('.','d')+'npy.npy'
+                    if os.path.isfile(save_dest):
+                        os.remove(save_dest)
+                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np")
+                    save_dest = save_dest.replace('.','d')+".npy"
+
                     if os.path.isfile(save_dest):
                         arr = np.load(save_dest)
                     else:
@@ -118,8 +124,8 @@ class EEGNpDataset(Dataset):
                         raw = raw.filter(low_cut, hi_cut)
                         raw = raw.crop(tmin=self.tstart, tmax=self.tend)
                         raw = raw.drop_channels(["X", "Y", "Z"])
-                        eeg_nfo = raw.info
-                        print(eeg_nfo.get("hpi_meas"))
+                        #eeg_nfo = raw.info
+                        #print(eeg_nfo.get("hpi_meas"))
                         arr = raw.get_data()
                         np.save(save_dest, arr)
             else:
@@ -142,7 +148,7 @@ class EEGNpDataset(Dataset):
             self.subjects[f_name] = self.data_points
             subjects = self.subjects.sort_index()
             subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False, na_rep="nan")
-        print(self.data_points)
+        print(self.subjects)
 
     def calc_samples(self, arr):
         whole = arr.shape[1]
@@ -151,7 +157,6 @@ class EEGNpDataset(Dataset):
         return int(np.floor((whole-duration)/(duration-overlap)))
 
     def __getitem__(self, idx: int):
-        print(idx)
         duration = self.duration * self.freq
         try:
             idx_subject, idx_inner = self.convert_to_idx(idx)
@@ -159,7 +164,6 @@ class EEGNpDataset(Dataset):
             print(idx,duration)
             print("error encountered something in convert to idx went wrong and the function didn't reach return condition and returned None")
             sys.exit(1)
-        print(f"schmove: {idx_inner}:{idx_inner+duration}, {idx_subject}")
         # print(len(self.epochs_list), self.epochs_list[0].shape)
         return self.transform(self.epochs_list[idx_subject][:, idx_inner:(idx_inner+duration)],
                               *self.trans_args), self.y_list[idx_subject]
@@ -192,11 +196,25 @@ class EEGNpDataset(Dataset):
             return self
         elif isinstance(ratios, float) or len(ratios) == 1:
             idx = ceil(len(self.y_list)*ratios)
-            return (EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                self.medicated,self.cache_size, self.batch_size, use_index=shuffled_idxes[:idx], transform=self.transform, trans_args=self.trans_args, overlap=self.overlap, duration=self.duration),
-                    EEGDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                               self.medicated, self.cache_size, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)],transform=self.transform, trans_args=self.trans_args,overlap=self.overlap, duration=self.duration))
+            return (EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                self.medicated, self.batch_size, use_index=shuffled_idxes[:idx], transform=self.transform, trans_args=self.trans_args, overlap=self.overlap, duration=self.duration),
+                    EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                               self.medicated, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)],transform=self.transform, trans_args=self.trans_args,overlap=self.overlap, duration=self.duration))
         else:
+            assert isinstance(ratios, tuple)
+            splits = []
+            prev_idx = 0
+            for ratio in ratios:
+                idx = ceil(len(self.y_list) * ratio)
+                splits.append(
+                    EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                    self.medicated, self.batch_size, use_index=shuffled_idxes[prev_idx: idx]))
+                prev_idx = idx
+            splits.append(
+                EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                           self.medicated, self.batch_size,
+                           use_index=shuffled_idxes[prev_idx: len(self.y_list)]))
+            return splits
 
 # first session is without medication
 # annotations are already added on the thing first 4mins (til s201 marker is rest state)
@@ -501,17 +519,17 @@ if __name__ == '__main__':
             break
 
             print(step)
-
     elif TEST == 1:
         ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,transform=resizer,trans_args=(224,224))
         dl = DataLoader(ds, batch_size=32,num_workers=4,shuffle=True)
+        ds.split(ratios=0.8,shuffle=True)
         t = 3
         cnt = 0
-        for step, i in enumerate(dl):
-            print(i)
-            """cnt = cnt + 1
-            if cnt == t:
-                break"""
+        """for step, i in enumerate(dl):
+            print(i)"""
+        """cnt = cnt + 1
+        if cnt == t:
+            break"""
 
     """NEED TO DECIDE WETHER I WANNA SPLIT THE DATASET BY PARTICIPANTS OR BY SIGNALS"""
