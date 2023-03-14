@@ -24,9 +24,6 @@ NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the 
 
 """
 
-#def optical_flow(matrix
-
-
 def resizer(matrix, new_x, new_y):
     # might have to assert float type
     #print(f"Matrix is of dtype: {matrix.dtype}")
@@ -34,6 +31,10 @@ def resizer(matrix, new_x, new_y):
     matrix = np.squeeze(matrix)
     matrix = cv2.resize(matrix,(new_x,new_y))
     return np.repeat(matrix[np.newaxis,:,:],3,axis=0)
+
+"""
+need to figure out how to transform the cwt data to look presentable/recognisable for the model
+"""
 
 def transform_to_cwt(signals, widths, wavelet):
     new_signals = []
@@ -479,32 +480,29 @@ class EEGDataset(Dataset):
     def clear_cache(self):
         self.cache = []
 
-TEST = 1
+TEST = 0
 if __name__ == '__main__':
     if TEST == 0:
-        dset = EEGDataset("ds003490-download", participants="participants.tsv",
-                          tstart=0, tend=240, cache_amount=1, batch_size=8,)#transform=resizer, trans_args=(224,224))
+        dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
+                          tstart=0, tend=240, batch_size=8,)#transform=resizer, trans_args=(224,224))
         #need to not transform
-        dset_train, dset_train1, dset_test = dset.split((0.4,0.8), shuffle = True)
-        print(len(dset_train),len(dset_train1), len(dset_test))
+        dset_train, dset_test = dset.split(0.8, shuffle = True)
+        print(len(dset_train), len(dset_test))
         print(dset_train.subjects, dset_test.subjects)
-        del dset
-        dset_train1.clear_cache()
-        dset_test.clear_cache()
 
-
-        dset_train.preload_whole()
-
-        sys.exit(0)
         dloader = DataLoader(dset, batch_size=8, shuffle=False, num_workers=1)
 
         for step, (x,y) in enumerate(dloader):
             print(x.shape, y.shape)
-            lino = x[0,0,0,:]
+            lino = x[0,0,:]
             print(lino.shape, "shapin")
 
-            long_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=23)))
-            short_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=8)))
+            #TODO use linspace over log space or maybe have to change it and invert the logspace so that it focuses on the lower? frequencies!
+
+            #long_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=23)))
+            long_boi = np.real(cwt(lino,morlet2,np.linspace(1,30,num=23)))
+            #short_boi = np.real(cwt(lino,morlet2,np.logspace(np.log2(2),np.log2(50),num=8)))
+            short_boi = np.real(cwt(lino,morlet2,np.linspace(1,30,num=8)))
             print(long_boi.shape)
             long_boi = resizer(long_boi,500,500)
             short_boi = resizer(short_boi,500,500)

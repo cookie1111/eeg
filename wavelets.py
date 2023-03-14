@@ -86,7 +86,7 @@ if __name__ == '__main__':
     print(a[0,0])
     print(a.shape)
 
-    # Cross-wavelet sepctrum 
+    # Cross-wavelet sepctrum
     cs_spect = np.multiply(a,np.conjugate(b))
     print(cs_spect[0,0])
 
@@ -95,15 +95,15 @@ if __name__ == '__main__':
 
     # all of the operations are element wise!!!
     # coherence is: abs(Smooth(cs_spec_xy))^2/(smooth(abs(cs_spec_x)^2)*smooth(abs(cs_spec_y)^2))
-
     upper = np.square(np.abs(gaussian_filter(cs_spect,(4,4))))
 
     lower = gaussian_filter(np.square(np.abs(a)),(4,4))*gaussian_filter(np.square(np.abs(b)),(4,4))
 
     coherence = np.divide(upper,lower)
     print(coherence)
-    plt.imshow(np.real(a),origin="lower")
-    plt.imshow(np.real(b), origin="lower")
-    plt.imshow(coherence, origin="lower")
+    fig,axs = plt.subplots(nrows=3, ncols=1)
+    axs[0].imshow(np.real(a),origin="lower")
+    axs[1].imshow(np.real(b), origin="lower")
+    axs[2].imshow(coherence, origin="lower")
 
     plt.show()
