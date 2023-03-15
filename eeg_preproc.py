@@ -44,12 +44,12 @@ def transform_to_cwt(signals, widths, wavelet):
     return new_signals
 
 
-class EEGNpDataset(Dataset):
+class EEGNpSignalDataset(Dataset):
 
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
                  tend: int = 30, special_part: str = None, medicated: int = 0,
                  batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9,
-                 stack_rgb = True, transform = lambda x:x, trans_args = (), freq = 500):
+                 stack_rgb = True, transform = lambda x:x, trans_args = (), freq = 500, signal_ch = 0):
         self.freq = freq
         self.overlap = overlap
         self.duration = duration
@@ -63,6 +63,7 @@ class EEGNpDataset(Dataset):
         self.medicated = medicated
         self.ids = id_column
         self.subjects = pd.read_table(os.path.join(root_dir, participants))
+        self.signal_ch = signal_ch
         # for using a custom index
         if use_index is not None:
             self.subjects = self.subjects.iloc[use_index]
@@ -76,6 +77,7 @@ class EEGNpDataset(Dataset):
         self.trans_args = trans_args
 
     def load_data(self):
+        # need to only load one channel so when
         fresh_entries = True
         f_name = f"len_{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np"
         f_name = f_name.replace('.','d')
@@ -168,6 +170,188 @@ class EEGNpDataset(Dataset):
         # print(len(self.epochs_list), self.epochs_list[0].shape)
         return self.transform(self.epochs_list[idx_subject][:, idx_inner:(idx_inner+duration)],
                               *self.trans_args), self.y_list[idx_subject]
+
+    def __len__(self):
+        suma = sum(self.data_points)
+        return suma
+
+    def convert_to_idx(self, index):
+        suma = 0
+        idx = 0
+        if index >= len(self):
+            raise IndexError
+        duration = self.duration * self.freq
+        overlap = self.overlap * self.freq
+        step = duration - overlap
+        for i in self.data_points:
+            if suma + i>index:
+                cur = index-suma
+                return int(idx), int(cur*step)
+            idx = idx + 1
+            suma = suma + i
+
+    def split(self,ratios=0.8, shuffle=False):
+        shuffled_idxes = list(range(len(self.y_list)))
+
+        if shuffle:
+            random.shuffle(shuffled_idxes)
+        if ratios is None:
+            return self
+        elif isinstance(ratios, float) or len(ratios) == 1:
+            idx = ceil(len(self.y_list)*ratios)
+            return (EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                self.medicated, self.batch_size, use_index=shuffled_idxes[:idx], transform=self.transform, trans_args=self.trans_args, overlap=self.overlap, duration=self.duration),
+                    EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                               self.medicated, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)],transform=self.transform, trans_args=self.trans_args,overlap=self.overlap, duration=self.duration))
+        else:
+            assert isinstance(ratios, tuple)
+            splits = []
+            prev_idx = 0
+            for ratio in ratios:
+                idx = ceil(len(self.y_list) * ratio)
+                splits.append(
+                    EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                    self.medicated, self.batch_size, use_index=shuffled_idxes[prev_idx: idx]))
+                prev_idx = idx
+            splits.append(
+                EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                           self.medicated, self.batch_size,
+                           use_index=shuffled_idxes[prev_idx: len(self.y_list)]))
+            return splits
+
+class EEGNpDataset(Dataset):
+
+    def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
+                 tend: int = 30, special_part: str = None, medicated: int = 0,
+                 batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9,
+                 stack_rgb = True, transform = lambda x:x, trans_args = (), freq = 500):
+        self.freq = freq
+        self.overlap = overlap
+        self.duration = duration
+        self.stack_em = stack_rgb
+        self.root_dir = root_dir
+        self.batch_size = batch_size
+        self.participants = participants
+        self.tstart = tstart
+        self.tend = tend
+        self.special_part = special_part
+        self.medicated = medicated
+        self.ids = id_column
+        self.subjects = pd.read_table(os.path.join(root_dir, participants))
+        # for using a custom index
+        if use_index is not None:
+            self.subjects = self.subjects.iloc[use_index]
+        self.egg_list = []
+        self.y_list = []
+        self.data_points = []
+        self.epochs_list = []
+        self.load_data()
+        self.stack = stack_rgb
+        self.transform = transform
+        self.trans_args = trans_args
+        self.ch = -1
+
+    def change_mode(self, ch=-1):
+        # ch being -1 means return all in get_item
+        self.ch = ch
+
+    def load_data(self):
+        fresh_entries = True
+        f_name = f"len_{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np"
+        f_name = f_name.replace('.','d')
+        if f_name in self.subjects:
+            fresh_entries=False
+
+        for subject in self.subjects.itertuples():
+
+            subject_path = os.path.join(self.root_dir, subject.participant_id)
+            # subject class, if its 0 the subject has PD if 1 its a control
+            y = 1 if subject.Group == "CTL" else 0
+            if self.medicated == 0 or y == 1:
+                if subject.sess1_Med == "OFF":
+                    subject_path = os.path.join(subject_path, "ses-02")
+                else:
+                    subject_path = os.path.join(subject_path, "ses-01")
+            elif self.medicated == 1:
+                if subject.sess1_Med == "OFF":
+                    subject_path = os.path.join(subject_path, "ses-01")
+                else:
+                    subject_path = os.path.join(subject_path, "ses-02")
+            else:
+                if y == 1:
+                    continue
+                subject_path1 = os.path.join(subject_path, "ses-01")
+                subject_path2 = os.path.join(subject_path, "ses-02")
+            if not self.medicated == 2:
+                # print(subject_path)
+                subject_path_eeg = os.path.join(subject_path,os.listdir(subject_path)[0])
+                # print(subject_path_eeg)
+                eeg_file = os.path.join(subject_path_eeg,
+                                        [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
+                if not self.special_part:
+                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np")
+                    save_dest = save_dest.replace('.','d')+'npy.npy'
+                    if os.path.isfile(save_dest):
+                        os.remove(save_dest)
+                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np")
+                    save_dest = save_dest.replace('.','d')+".npy"
+
+                    if os.path.isfile(save_dest):
+                        arr = np.load(save_dest)
+                    else:
+                        raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
+                        low_cut = 1
+                        hi_cut = 30
+                        raw = raw.filter(low_cut, hi_cut)
+                        raw = raw.crop(tmin=self.tstart, tmax=self.tend)
+                        raw = raw.drop_channels(["X", "Y", "Z"])
+                        #eeg_nfo = raw.info
+                        #print(eeg_nfo.get("hpi_meas"))
+                        arr = raw.get_data()
+                        np.save(save_dest, arr)
+            else:
+                eeg_file1 = os.path.join(subject_path1, [f for f in os.listdir(subject_path1) if f.endswith('.set')][0])
+                raw1 = mne.io.read_raw_eeglab(eeg_file1)
+                eeg_file2 = os.path.join(subject_path2, [f for f in os.listdir(subject_path2) if f.endswith('.set')][0])
+                raw2 = mne.io.read_raw_eeglab(eeg_file2)
+
+            if self.epochs_list is None:
+                self.epochs_list = [arr]
+                l = self.calc_samples(arr)
+                self.data_points = [l]
+            else:
+                self.epochs_list.append(arr)
+                l = self.calc_samples(arr)
+                self.data_points.append(l)
+            self.y_list.append(y)
+        # we save the dataframe
+        if fresh_entries:
+            self.subjects[f_name] = self.data_points
+            subjects = self.subjects.sort_index()
+            subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False, na_rep="nan")
+        print(self.subjects)
+
+    def calc_samples(self, arr):
+        whole = arr.shape[1]
+        duration = self.duration*self.freq
+        overlap = self.overlap*self.freq
+        return int(np.floor((whole-duration)/(duration-overlap)))
+
+    def __getitem__(self, idx: int):
+        duration = self.duration * self.freq
+        try:
+            idx_subject, idx_inner = self.convert_to_idx(idx)
+        except TypeError:
+            print(idx,duration)
+            print("error encountered something in convert to idx went wrong and the function didn't reach return condition and returned None")
+            sys.exit(1)
+        if self.ch == -1:
+        # print(len(self.epochs_list), self.epochs_list[0].shape)
+            return self.transform(self.epochs_list[idx_subject][:, idx_inner:(idx_inner+duration)],
+                              *self.trans_args), self.y_list[idx_subject]
+        else:
+            return self.transform(np.expand_dims(self.epochs_list[idx_subject][self.ch, idx_inner:(idx_inner+duration)],axis=0),
+                                  *self.trans_args), self.y_list[idx_subject]
 
     def __len__(self):
         suma = sum(self.data_points)
@@ -480,7 +664,7 @@ class EEGDataset(Dataset):
     def clear_cache(self):
         self.cache = []
 
-TEST = 0
+TEST = 1
 if __name__ == '__main__':
     if TEST == 0:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
@@ -519,15 +703,20 @@ if __name__ == '__main__':
             print(step)
     elif TEST == 1:
         ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
-                          tstart=0, tend=240, batch_size=8,transform=resizer,trans_args=(224,224))
+                          tstart=0, tend=240, batch_size=8,)#transform=resizer,trans_args=(224,224))
         dl = DataLoader(ds, batch_size=32,num_workers=4,shuffle=True)
-        ds.split(ratios=0.8,shuffle=True)
+        ds.change_mode(ch=1)
+        #ds.split(ratios=0.8,shuffle=True)
         t = 3
         cnt = 0
-        """for step, i in enumerate(dl):
-            print(i)"""
+        for step, i in enumerate(dl):
+            print(i[0].shape)
         """cnt = cnt + 1
         if cnt == t:
             break"""
+        ds.change_mode(ch=-1)
+        for step, i in enumerate(dl):
+            print(i[0].shape)
+            break
 
     """NEED TO DECIDE WETHER I WANNA SPLIT THE DATASET BY PARTICIPANTS OR BY SIGNALS"""
