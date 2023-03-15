@@ -553,7 +553,7 @@ if __name__ == '__main__':
         """cnt = cnt + 1
         if cnt == t:
             break"""
-        ds.change_mode(ch=-1)
+        ds.change_mode(ch=2)
         dl = DataLoader(ds, batch_size=32,num_workers=1,shuffle=True)
         for step, i in enumerate(dl):
             print(i[0].shape)

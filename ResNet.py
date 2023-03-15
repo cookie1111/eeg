@@ -111,7 +111,7 @@ class ResNet18(nn.Module):
         #self.conv1 = nn.Conv2d(1,64,kernel_size=7,stride=2,padding=3,bias=False)
 
         #self.conv1.weight= nn.Parameter(resnet.conv1.weight[:,:1,:,:])
-        
+
         for param in resnet.parameters():
             param.requires_grad = False
 
@@ -130,7 +130,7 @@ class ResNet18(nn.Module):
 
         return x
 
-def train(model, dloader_train, dloader_test, optimizer, criterion, device, num_epochs=10):
+def train(model, dloader_train, dloader_test, optimizer, criterion, device, num_epochs=10,channel=0):
     start = time.time()
 
     val_acc_hist = []
@@ -189,22 +189,27 @@ def train(model, dloader_train, dloader_test, optimizer, criterion, device, num_
             best_acc = epoch_acc
             best_model_wts = copy.deepcopy(model.state_dict())
         val_acc_hist.append(epoch_acc)
-
+    print(f"best_acc:{best_acc}")
+    print(f"saving best model")
+    troch.save(best_model_wts.state_dict(),f"resnet_model_channel{channel}")
 
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #res = ResNet18WithBlocks(1,18,ResBlock)
-    res = ResNet18(2,2).to(device)
-    res = res.double()
     dset = EEGDataset("./ds003490-download", participants="participants.tsv",
                       tstart=0, tend=240, cache_amount=1, batch_size=8,
                       transform=resizer, trans_args=(224,224))
     dtrain, dtest = dset.split(ratios=0.8, shuffle=True)
     del dset
-    optimizer = optim.SGD(res.parameters(), lr=0.01, momentum=0.9)
-    criterion = nn.CrossEntropyLoss()
-    train(res,
-          DataLoader(dtrain, batch_size=8,shuffle=False,num_workers=1),
-          DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),
-          optimizer, criterion, device)
+    for i in range(64):
+        res = ResNet18(2,2).to(device)
+        res = res.double()
+        optimizer = optim.SGD(res.parameters(), lr=0.01, momentum=0.9)
+        criterion = nn.CrossEntropyLoss()
+        dtrain.change_mode(ch=i)
+        dtest.change_mode(ch=i)
+        train(res,
+              DataLoader(dtrain, batch_size=8,shuffle=False,num_workers=1),
+              DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),
+              optimizer, criterion, device,channel=i)
 
