@@ -503,8 +503,9 @@ class EEGDataset(Dataset):
     def clear_cache(self):
         self.cache = []
 
-TEST = 1
+
 if __name__ == '__main__':
+    TEST = 1
     if TEST == 0:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,)#transform=resizer, trans_args=(224,224))

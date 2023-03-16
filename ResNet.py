@@ -7,7 +7,7 @@ import torchvision.models as models
 from torch.utils.data import DataLoader
 import torch.optim as optim
 
-from eeg_preproc import EEGDataset, resizer
+from eeg_preproc import EEGNpDataset as EEGDataset, resizer
 
 # rewrite resnet to use th epretrained model
 
@@ -111,7 +111,7 @@ class ResNet18(nn.Module):
         #self.conv1 = nn.Conv2d(1,64,kernel_size=7,stride=2,padding=3,bias=False)
 
         #self.conv1.weight= nn.Parameter(resnet.conv1.weight[:,:1,:,:])
-
+        
         for param in resnet.parameters():
             param.requires_grad = False
 
@@ -191,13 +191,13 @@ def train(model, dloader_train, dloader_test, optimizer, criterion, device, num_
         val_acc_hist.append(epoch_acc)
     print(f"best_acc:{best_acc}")
     print(f"saving best model")
-    troch.save(best_model_wts.state_dict(),f"resnet_model_channel{channel}")
+    torch.save(best_model_wts.state_dict(),f"resnet_model_channel{channel}")
 
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #res = ResNet18WithBlocks(1,18,ResBlock)
-    dset = EEGDataset("./ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=240, cache_amount=1, batch_size=8,
+    dset = EEGDataset("ds003490-download", participants="participants.tsv",
+                      tstart=0, tend=240, batch_size=32,
                       transform=resizer, trans_args=(224,224))
     dtrain, dtest = dset.split(ratios=0.8, shuffle=True)
     del dset
@@ -209,7 +209,7 @@ if __name__ == "__main__":
         dtrain.change_mode(ch=i)
         dtest.change_mode(ch=i)
         train(res,
-              DataLoader(dtrain, batch_size=8,shuffle=False,num_workers=1),
-              DataLoader(dtest, batch_size=8,shuffle=False,num_workers=1),
+              DataLoader(dtrain, batch_size=32,shuffle=True,num_workers=4),
+              DataLoader(dtest, batch_size=32,shuffle=True,num_workers=4),
               optimizer, criterion, device,channel=i)
 
