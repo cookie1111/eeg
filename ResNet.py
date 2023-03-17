@@ -191,7 +191,7 @@ def train(model, dloader_train, dloader_test, optimizer, criterion, device, num_
         val_acc_hist.append(epoch_acc)
     print(f"best_acc:{best_acc}")
     print(f"saving best model")
-    torch.save(best_model_wts.state_dict(),f"resnet_model_channel{channel}")
+    torch.save(best_model_wts,f"resnet_model_channel{channel}")
 
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
