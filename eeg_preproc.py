@@ -211,33 +211,70 @@ class EEGNpDataset(Dataset):
             idx = idx + 1
             suma = suma + i
 
-    def split(self,ratios=0.8, shuffle=False):
-        shuffled_idxes = list(range(len(self.y_list)))
+    def split(self,ratios=0.8, shuffle=False, balance_classes=True):
+        if balance_classes:
+            #need to know how much one and the other list have
+            c1 = [idx for idx,c in enumerate(self.y_list) if c == 1]
+            c0 = [idx for idx,c in enumerate(self.y_list) if c == 0]
+            if shuffle:
+                random.shuffle(c1)
+                random.shuffle(c0)
+        else:
+            shuffled_idxes = list(range(len(self.y_list)))
+            if shuffle:
+                random.shuffle(shuffled_idxes)
 
-        if shuffle:
-            random.shuffle(shuffled_idxes)
         if ratios is None:
             return self
         elif isinstance(ratios, float) or len(ratios) == 1:
-            idx = ceil(len(self.y_list)*ratios)
+            if balance_classes:
+                ce1 = ceil(len(c1)*ratios)
+                ce0 = ceil(len(c0)*ratios)
+                bottom = c1[:ce1]+c0[:ce0]
+                top = c1[ce1:] + c0[ce0:]
+            else:
+                idx = ceil(len(self.y_list)*ratios)
+                bottom = shuffled_idxes[:idx]
+                top = shuffled_idxes[idx:]
+
             return (EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                self.medicated, self.batch_size, use_index=shuffled_idxes[:idx], transform=self.transform, trans_args=self.trans_args, overlap=self.overlap, duration=self.duration),
+                self.medicated, self.batch_size, use_index=bottom, transform=self.transform, trans_args=self.trans_args, overlap=self.overlap, duration=self.duration),
                     EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                               self.medicated, self.batch_size, use_index=shuffled_idxes[idx:len(self.y_list)],transform=self.transform, trans_args=self.trans_args,overlap=self.overlap, duration=self.duration))
+                               self.medicated, self.batch_size, use_index=top,transform=self.transform, trans_args=self.trans_args,overlap=self.overlap, duration=self.duration))
         else:
             assert isinstance(ratios, tuple)
             splits = []
-            prev_idx = 0
+            if balance_classes:
+                prev_idx1 = 0
+                prev_idx0 = 0
+            else:
+                prev_idx = 0
             for ratio in ratios:
-                idx = ceil(len(self.y_list) * ratio)
+                if balance_classes:
+                    ce1 = ceil(len(c1)*ratios)
+                    ce0 = ceil(len(c0)*ratios)
+                    bottom = c1[prev_idx1:ce1]+c0[prev_idx0:ce0]
+                else:
+                    idx = ceil(len(self.y_list) * ratio)
+                    bottom = shuffled_idxes[prev_idx: idx]
                 splits.append(
                     EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                    self.medicated, self.batch_size, use_index=shuffled_idxes[prev_idx: idx]))
-                prev_idx = idx
+                    self.medicated, self.batch_size, use_index=bottom))
+                if balance_classes:
+                    prev_idx1 = ce1
+                    prev_idx0 = ce0
+                else:
+                    prev_idx = idx
+
+            if balance_classes:
+                bottom = c1[prev_idx1:]+c0[prev_idx0:]
+            else:
+                bottom = shuffled_idxes[prev_idx:]
+
             splits.append(
                 EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                            self.medicated, self.batch_size,
-                           use_index=shuffled_idxes[prev_idx: len(self.y_list)]))
+                           use_index=bottom))
             return splits
 
 # first session is without medication
@@ -505,7 +542,7 @@ class EEGDataset(Dataset):
 
 
 if __name__ == '__main__':
-    TEST = 1
+    TEST = 2
     if TEST == 0:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,)#transform=resizer, trans_args=(224,224))
@@ -560,4 +597,9 @@ if __name__ == '__main__':
             print(i[0].shape)
             break
 
+    elif TEST == 2:
+        ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
+                          tstart=0, tend=240, batch_size=8,transform=resizer,trans_args=(224,224,transform_to_cwt,(np.linspace(1,30,num=23),morlet2,True)))
+
+        ds.split(0.8, shuffle=True, balance_classes=True)
     """NEED TO DECIDE WETHER I WANNA SPLIT THE DATASET BY PARTICIPANTS OR BY SIGNALS"""
