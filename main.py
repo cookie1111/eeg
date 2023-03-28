@@ -5,8 +5,9 @@ from mne.preprocessing import ICA
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import fastica
-from eeg_preproc import EEGDataset
+from eeg_preproc import EEGNpDataset as EEGDataset
 from sys import getsizeof
+from sklearn.preprocessing import scale, normalize, minmax_scale
 
 # prve  5 min je rest state z označenim ko so oči odprte in ko so oči zaprte. I guess da referenca??
 # pol so pa toni ki se spreminjajo iz sekunde v sekundo, 70% procentov je 440Hz sinusni ton, 15% je 660Hz  sinusni ton,ž
@@ -45,11 +46,7 @@ if __name__ == '__main__':
         print("stand")
     elif TEST == 1:
         ds = EEGDataset("ds003490-download",participants="participants.tsv",tstart=0,tend=240,cache_amount=1, batch_size=8)
-        print(getsizeof(ds))
-        f = "/home/sebastjan/PycharmProjects/eeg/ds003490-download/sub-001/ses-01/eeg/0_0_240_noDrop_0d9_1_epo.fif"
-        e = mne.read_epochs(f)
 
-        m = e.get_data()
-        print(m.shape)
-        np.save("test.npy",m)
+
+        dl = DataLoader()
 
