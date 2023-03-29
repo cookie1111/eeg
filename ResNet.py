@@ -4,10 +4,12 @@ import time
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from scipy.signal import morlet2
 from torch.utils.data import DataLoader
 import torch.optim as optim
+import numpy as np
 
-from eeg_preproc import EEGNpDataset as EEGDataset, resizer
+from eeg_preproc import EEGNpDataset as EEGDataset, resizer, transform_to_cwt
 
 # rewrite resnet to use th epretrained model
 
@@ -119,7 +121,10 @@ class ResNet18(nn.Module):
         self.classifier = nn.Sequential(
                 nn.AdaptiveAvgPool2d((1, 1)),
                 nn.Flatten(),
-                nn.Linear(512, num_classes))
+                nn.Linear(512, 1024),
+                nn.Linear(1024, num_classes)
+
+        )
 
         for param in self.classifier.parameters():
             param.requiers_grad = True
@@ -191,14 +196,20 @@ def train(model, dloader_train, dloader_test, optimizer, criterion, device, num_
         val_acc_hist.append(epoch_acc)
     print(f"best_acc:{best_acc}")
     print(f"saving best model")
-    torch.save(best_model_wts,f"resnet_model_channel{channel}")
+    torch.save(best_model_wts,f"resnet_model_channel{channel}_2_layers_cwt")
 
 TEST = 1
+special = True
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    dset = EEGDataset("ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=240, batch_size=32,
-                      transform=resizer, trans_args=(224,224))
+    if not special:
+        dset = EEGDataset("ds003490-download", participants="participants.tsv",
+                          tstart=0, tend=240, batch_size=32,
+                          transform=resizer, trans_args=(224,224))
+    else:
+        dset = EEGDataset("ds003490-download", participants="participants.tsv",
+                          tstart=0, tend=240, batch_size=8, transform=resizer,
+                          trans_args=(224, 224, transform_to_cwt, (np.linspace(1, 30, num=23), morlet2, True)), debug=False)
     dtrain, dtest = dset.split(ratios=0.8, shuffle=True, balance_classes=True)
     del dset
     if TEST == 0:
@@ -219,6 +230,6 @@ if __name__ == "__main__":
         optimizer = optim.SGD(res.parameters(), lr=0.01, momentum=0.9)
         criterion = nn.CrossEntropyLoss()
         train(res,
-              DataLoader(dtrain, batch_size=32, shuffle=True, num_workers=4),
-              DataLoader(dtest, batch_size=32, shuffle=True, num_workers=4),
+              DataLoader(dtrain, batch_size=4, shuffle=True, num_workers=1),
+              DataLoader(dtest, batch_size=4, shuffle=True, num_workers=1),
               optimizer, criterion, device)

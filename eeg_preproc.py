@@ -31,9 +31,10 @@ def resizer(matrix, new_x, new_y, transform=None, transform_args=None):
     if transform:
         matrix = transform(matrix,*transform_args)
     #print(matrix)
-
+    print(matrix.shape)
     matrix = np.squeeze(matrix)
     matrix = cv2.resize(matrix,(new_x,new_y))
+    print(matrix.shape)
     return np.repeat(matrix[np.newaxis,:,:],3,axis=0)
 
 """
@@ -44,7 +45,7 @@ def transform_to_cwt(signals, widths, wavelet, real=True,transform=None, transfo
 
     if transform:
         print("nope")
-        matrix = transform(matrix,*transform_args)
+        signals = transform(signals,*transform_args)
 
     new_signals = []
     #print(signals.shape)
@@ -54,7 +55,7 @@ def transform_to_cwt(signals, widths, wavelet, real=True,transform=None, transfo
         else:
             new_signals.append(np.imag(cwt(signals[i,:], wavelet, widths)))
 
-
+    print(np.array(new_signals).shape)
     return np.array(new_signals)
 
 
@@ -236,8 +237,9 @@ class EEGNpDataset(Dataset):
                       f"be loaded not equivalent to subject id) and within sample_index (index of sample within a subj\n"
                       f"ect)")
             idx_subject, idx_inner = self.convert_to_idx(idx)
-            print(f"DEBUG: subject_number = {idx_subject}\n"
-                  f"       sample_index = {idx_inner}")
+            if self.debug:
+                print(f"DEBUG: subject_number = {idx_subject}\n"
+                      f"       sample_index = {idx_inner}")
         except TypeError:
             print(idx,duration)
             print("error encountered something in convert to idx went wrong and the function didn't reach return condition and returned None")
@@ -299,9 +301,11 @@ class EEGNpDataset(Dataset):
                 top = shuffled_idxes[idx:]
 
             return (EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                self.medicated, self.batch_size, use_index=bottom, transform=self.transform, trans_args=self.trans_args, overlap=self.overlap, duration=self.duration),
+                                 self.medicated, self.batch_size, use_index=bottom, transform=self.transform, trans_args=self.trans_args,
+                                 overlap=self.overlap, duration=self.duration, debug=False),
                     EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                               self.medicated, self.batch_size, use_index=top,transform=self.transform, trans_args=self.trans_args,overlap=self.overlap, duration=self.duration))
+                                 self.medicated, self.batch_size, use_index=top,transform=self.transform, trans_args=self.trans_args,
+                                 overlap=self.overlap, duration=self.duration, debug=False))
         else:
             assert isinstance(ratios, tuple)
             splits = []
@@ -613,7 +617,7 @@ class EEGDataset(Dataset):
 
 
 if __name__ == '__main__':
-    TEST = 4
+    TEST = 3
     if TEST == 0:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,)#transform=resizer, trans_args=(224,224))
@@ -675,7 +679,12 @@ if __name__ == '__main__':
     elif TEST == 3:
         ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,transform=resizer,trans_args=(224,224,transform_to_cwt,(np.linspace(1,30,num=23),morlet2,True)), debug = True)
-        ds.split(0.8, shuffle=True, balance_classes=True)
+        dtrain,dtest = ds.split(0.8, shuffle=True, balance_classes=True)
+        del ds
+        dl = DataLoader(dtrain,batch_size=4,shuffle=True,num_workers=1)
+        dlt = DataLoader(dtest,batch_size=4,shuffle=True,num_workers=1)
+        for i in dl:
+            print("w")
     elif TEST == 4:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
                             tstart=0, tend=240, batch_size=8, medicated=1, transform=resizer, trans_args=(224,224))
