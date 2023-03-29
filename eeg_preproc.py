@@ -61,10 +61,11 @@ def transform_to_cwt(signals, widths, wavelet, real=True,transform=None, transfo
 class EEGNpDataset(Dataset):
 
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
-                 tend: int = 30, special_part: str = None, medicated: int = 0,
+                 tend: int = 30, special_part: str = None, medicated: int = 1,
                  batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9,
-                 stack_rgb = True, transform = lambda x:x, trans_args = (), freq = 500):
+                 stack_rgb = True, transform = lambda x:x, trans_args = (), freq = 500, debug = False):
         self.freq = freq
+        self.debug = debug
         self.overlap = overlap
         self.duration = duration
         self.stack_em = stack_rgb
@@ -90,22 +91,35 @@ class EEGNpDataset(Dataset):
         self.trans_args = trans_args
         self.ch = -1
 
+
     def change_mode(self, ch=-1):
         # ch being -1 means return all in get_item
+        if self.debug:
+            print(f"DEBUG:Changing channel to {ch} from {self.ch}")
         self.ch = ch
 
     def load_data(self):
         fresh_entries = True
         f_name = f"len_{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np"
         f_name = f_name.replace('.','d')
+        if self.debug:
+            print(f"DEBUG: Checking if {f_name} already mentioned in the subjects ds.")
         if f_name in self.subjects:
             fresh_entries=False
+        if self.debug:
+            print(f"DEBUG: {f_name} is {'not' if fresh_entries else ''} in subjects")
 
         for subject in self.subjects.itertuples():
 
             subject_path = os.path.join(self.root_dir, subject.participant_id)
             # subject class, if its 0 the subject has PD if 1 its a control
             y = 1 if subject.Group == "CTL" else 0
+            if self.debug:
+                print(f"DEBUG: subject is in {'CTL' if y else 'PD'} group")
+
+            # if self.medicated == 0 means that the subject was medicated -> looking for session where subject was medicated
+            # if self.medicated == 1 means that the subject wasn't medicated
+            # if self.medicated == 2 means that we use both the medicated and not medicated portion for training
             if self.medicated == 0 or y == 1:
                 if subject.sess1_Med == "OFF":
                     subject_path = os.path.join(subject_path, "ses-02")
@@ -121,9 +135,16 @@ class EEGNpDataset(Dataset):
                     continue
                 subject_path1 = os.path.join(subject_path, "ses-01")
                 subject_path2 = os.path.join(subject_path, "ses-02")
+            if self.debug:
+                print(f"DEBUG: subject was {'OFF' if self.medicated == 1 else 'ON'} medication")
             if not self.medicated == 2:
+                if self.debug:
+                    print(f"DEBUG: using only one session per subject")
+
                 # print(subject_path)
-                subject_path_eeg = os.path.join(subject_path,os.listdir(subject_path)[0])
+                subject_path_eeg = os.path.join(subject_path, os.listdir(subject_path)[0])
+                if self.debug:
+                    print(f"DEBUG: loading subjects eeg from {subject_path_eeg}")
                 # print(subject_path_eeg)
                 eeg_file = os.path.join(subject_path_eeg,
                                         [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
@@ -133,11 +154,18 @@ class EEGNpDataset(Dataset):
                     if os.path.isfile(save_dest):
                         os.remove(save_dest)
                     save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np")
-                    save_dest = save_dest.replace('.','d')+".npy"
+                    save_dest = save_dest.replace('.', 'd')+".npy"
+
+                    if self.debug:
+                        print(f"DEBUG: preparing save_destination for subject {save_dest}")
 
                     if os.path.isfile(save_dest):
+                        if self.debug:
+                            print(f"DEBUG: {save_dest} already exists so no need to load it")
                         arr = np.load(save_dest)
                     else:
+                        if self.debug:
+                            print(f"DEBUG: {save_dest} does not yet exist so filtering and cutting from scratch")
                         raw = mne.io.read_raw_eeglab(eeg_file, preload=True)
                         low_cut = 1
                         hi_cut = 30
@@ -148,6 +176,8 @@ class EEGNpDataset(Dataset):
                         #print(eeg_nfo.get("hpi_meas"))
                         arr = raw.get_data()
                         np.save(save_dest, arr)
+                        if self.debug:
+                            print(f"DEBUG: Preprocessed version saved to {save_dest}")
             else:
                 eeg_file1 = os.path.join(subject_path1, [f for f in os.listdir(subject_path1) if f.endswith('.set')][0])
                 raw1 = mne.io.read_raw_eeglab(eeg_file1)
@@ -155,16 +185,30 @@ class EEGNpDataset(Dataset):
                 raw2 = mne.io.read_raw_eeglab(eeg_file2)
 
             if self.epochs_list is None:
+                if self.debug:
+                    print(f"DEBUG: epochs_list has yet to be populated adding arr to epochs_list")
+
                 self.epochs_list = [arr]
                 l = self.calc_samples(arr)
+                if self.debug:
+                    print(f"DEBUG: arr info = {arr.shape}, number of samples= {l}")
                 self.data_points = [l]
             else:
+                if self.debug:
+                    print(f"DEBUG: epochs_list adding arr to epochs_list")
                 self.epochs_list.append(arr)
                 l = self.calc_samples(arr)
+                if self.debug:
+                    print(f"DEBUG: arr info = {arr.shape}, number of samples= {l}")
                 self.data_points.append(l)
+
             self.y_list.append(y)
+            if self.debug:
+                print(f"DEBUG: {subject} has the class {y} meaning its {'PD' if y == 0 else 'CTL'}")
         # we save the dataframe
         if fresh_entries:
+            if self.debug:
+                print(f"DEBUG: Adding the subject to the df since its a fresh entry")
             self.subjects[f_name] = self.data_points
             subjects = self.subjects.sort_index()
             subjects.to_csv(os.path.join(self.root_dir, self.participants), sep="\t", index=False, na_rep="nan")
@@ -174,21 +218,38 @@ class EEGNpDataset(Dataset):
         whole = arr.shape[1]
         duration = self.duration*self.freq
         overlap = self.overlap*self.freq
-        return int(np.floor((whole-duration)/(duration-overlap)))
+        ret = int(np.floor((whole - duration) / (duration - overlap)))
+        if self.debug:
+            print(f"DEBUG: calculating number of samples in the recording")
+            print(f"duration_of_sample = {duration}")
+            print(f"overlap between consecutive samples = {overlap}")
+            print(f"number of samples = {ret}")
+        return ret
 
     def __getitem__(self, idx: int):
+        if self.debug:
+            print(f"DEBUG: Fetching sample number {idx}")
         duration = self.duration * self.freq
         try:
+            if self.debug:
+                print(f"DEBUG: converting {idx} (overall index) to subject_number (denoting the subject to \n"
+                      f"be loaded not equivalent to subject id) and within sample_index (index of sample within a subj\n"
+                      f"ect)")
             idx_subject, idx_inner = self.convert_to_idx(idx)
+            print(f"DEBUG: subject_number = {idx_subject}\n"
+                  f"       sample_index = {idx_inner}")
         except TypeError:
             print(idx,duration)
             print("error encountered something in convert to idx went wrong and the function didn't reach return condition and returned None")
             sys.exit(1)
         if self.ch == -1:
-        # print(len(self.epochs_list), self.epochs_list[0].shape)
+            if self.debug:
+                print(f"DEBUG: using all channels and running transformation on top of them")
             return self.transform(self.epochs_list[idx_subject][:, idx_inner:(idx_inner+duration)],
-                              *self.trans_args), self.y_list[idx_subject]
+                                  *self.trans_args), self.y_list[idx_subject]
         else:
+            if self.debug:
+                print(f"DEBUG: running on channel {self.ch} and applying transformation")
             return self.transform(np.expand_dims(self.epochs_list[idx_subject][self.ch, idx_inner:(idx_inner+duration)],axis=0),
                                   *self.trans_args), self.y_list[idx_subject]
 
@@ -276,6 +337,16 @@ class EEGNpDataset(Dataset):
                            self.medicated, self.batch_size,
                            use_index=bottom))
             return splits
+
+    def info(self):
+        self.debug = True
+        print(f"________________________INFO________________________\n"
+              f"Amount of subjects: {len(self.epochs_list)}\n"
+              f"Amount of subjects based of data_points: {len(self.data_points)}\n"
+              f"All samples: {sum(self.data_points)}\n"
+              f"Class balance: {sum(self.y_list)/len(self.y_list)} (1 class vs all)\n"
+              f"Get random variable: {self[random.randint(0,len(self))]}\n")
+        self.debug = False
 
 # first session is without medication
 # annotations are already added on the thing first 4mins (til s201 marker is rest state)
@@ -542,7 +613,7 @@ class EEGDataset(Dataset):
 
 
 if __name__ == '__main__':
-    TEST = 2
+    TEST = 4
     if TEST == 0:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,)#transform=resizer, trans_args=(224,224))
@@ -596,10 +667,21 @@ if __name__ == '__main__':
         for step, i in enumerate(dl):
             print(i[0].shape)
             break
-
     elif TEST == 2:
         ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,transform=resizer,trans_args=(224,224,transform_to_cwt,(np.linspace(1,30,num=23),morlet2,True)))
 
         ds.split(0.8, shuffle=True, balance_classes=True)
-    """NEED TO DECIDE WETHER I WANNA SPLIT THE DATASET BY PARTICIPANTS OR BY SIGNALS"""
+    elif TEST == 3:
+        ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
+                          tstart=0, tend=240, batch_size=8,transform=resizer,trans_args=(224,224,transform_to_cwt,(np.linspace(1,30,num=23),morlet2,True)), debug = True)
+        ds.split(0.8, shuffle=True, balance_classes=True)
+    elif TEST == 4:
+        dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
+                            tstart=0, tend=240, batch_size=8, medicated=1, transform=resizer, trans_args=(224,224))
+        # need to not transform
+        dset.info()
+        #dset_train, dset_test = dset.split(0.8, shuffle=True)
+        #del(dset)
+        #dset_train.info()
+        #dset_test.info()

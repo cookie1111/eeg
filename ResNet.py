@@ -193,23 +193,32 @@ def train(model, dloader_train, dloader_test, optimizer, criterion, device, num_
     print(f"saving best model")
     torch.save(best_model_wts,f"resnet_model_channel{channel}")
 
+TEST = 1
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    #res = ResNet18WithBlocks(1,18,ResBlock)
     dset = EEGDataset("ds003490-download", participants="participants.tsv",
                       tstart=0, tend=240, batch_size=32,
                       transform=resizer, trans_args=(224,224))
-    dtrain, dtest = dset.split(ratios=0.8, shuffle=True)
+    dtrain, dtest = dset.split(ratios=0.8, shuffle=True, balance_classes=True)
     del dset
-    for i in range(64):
-        res = ResNet18(2,2).to(device)
+    if TEST == 0:
+        for i in range(64):
+            res = ResNet18(2,2).to(device)
+            res = res.double()
+            optimizer = optim.SGD(res.parameters(), lr=0.01, momentum=0.9)
+            criterion = nn.CrossEntropyLoss()
+            dtrain.change_mode(ch=i)
+            dtest.change_mode(ch=i)
+            train(res,
+                  DataLoader(dtrain, batch_size=32,shuffle=True,num_workers=4),
+                  DataLoader(dtest, batch_size=32,shuffle=True,num_workers=4),
+                  optimizer, criterion, device,channel=i)
+    elif TEST == 1:
+        res = ResNet18(2, 2).to(device)
         res = res.double()
         optimizer = optim.SGD(res.parameters(), lr=0.01, momentum=0.9)
         criterion = nn.CrossEntropyLoss()
-        dtrain.change_mode(ch=i)
-        dtest.change_mode(ch=i)
         train(res,
-              DataLoader(dtrain, batch_size=32,shuffle=True,num_workers=4),
-              DataLoader(dtest, batch_size=32,shuffle=True,num_workers=4),
-              optimizer, criterion, device,channel=i)
-
+              DataLoader(dtrain, batch_size=32, shuffle=True, num_workers=4),
+              DataLoader(dtest, batch_size=32, shuffle=True, num_workers=4),
+              optimizer, criterion, device)
