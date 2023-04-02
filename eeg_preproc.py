@@ -24,7 +24,7 @@ NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the 
 
 """
 
-def resizer(matrix, new_x, new_y, transform=None, transform_args=None):
+def resizer(matrix, new_x, new_y, transform=None, transform_args=None, add_dims = True):
     # might have to assert float type
     #print(f"Matrix is of dtype: {matrix.dtype}")
     #print(f"shape: {matrix.shape}, new_shapes: {new_x}.{new_y}")
@@ -35,16 +35,25 @@ def resizer(matrix, new_x, new_y, transform=None, transform_args=None):
     matrix = np.squeeze(matrix)
     matrix = cv2.resize(matrix,(new_x,new_y))
     print(matrix.shape)
-    return np.repeat(matrix[np.newaxis,:,:],3,axis=0)
+    if add_dims:
+        return np.repeat(matrix[np.newaxis,:,:],3,axis=0)
+    else:
+        return matrix
 
 """
 need to figure out how to transform the cwt data to look presentable/recognisable for the model
 """
 
+def reshaper(signals, new_x, new_y, new_depth, transform=None, transform_args=None):
+    if transform:
+        print("nope")
+        signals = transform(signals, *transform_args)
+
+
+
 def transform_to_cwt(signals, widths, wavelet, real=True,transform=None, transform_args=None):
 
     if transform:
-        print("nope")
         signals = transform(signals,*transform_args)
 
     new_signals = []
@@ -678,7 +687,11 @@ if __name__ == '__main__':
         ds.split(0.8, shuffle=True, balance_classes=True)
     elif TEST == 3:
         ds = EEGNpDataset("ds003490-download", participants="participants.tsv",
-                          tstart=0, tend=240, batch_size=8,transform=resizer,trans_args=(224,224,transform_to_cwt,(np.linspace(1,30,num=23),morlet2,True)), debug = True)
+                          tstart=0, tend=240, batch_size=8,
+                          transform=reshaper,
+                          trans_args=(224, 224, 3,
+                                      transform_to_cwt, (np.linspace(1, 30, num=23), morlet2, True)),
+                          debug = True)
         dtrain,dtest = ds.split(0.8, shuffle=True, balance_classes=True)
         del ds
         dl = DataLoader(dtrain,batch_size=4,shuffle=True,num_workers=1)
