@@ -14,7 +14,7 @@ import mne
 mne.set_log_level("DEBUG")
 import torch
 from torch.utils.data import Dataset, DataLoader
-from math import ceil
+from math import ceil, prod
 import random
 from wavelets import calculate_cwt_coherence
 """
@@ -26,15 +26,10 @@ NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the 
 
 def resizer(matrix, new_x, new_y, transform=None, transform_args=None, add_dims = True):
     # might have to assert float type
-    #print(f"Matrix is of dtype: {matrix.dtype}")
-    #print(f"shape: {matrix.shape}, new_shapes: {new_x}.{new_y}")
     if transform:
         matrix = transform(matrix,*transform_args)
-    #print(matrix)
-    print(matrix.shape)
     matrix = np.squeeze(matrix)
     matrix = cv2.resize(matrix,(new_x,new_y))
-    print(matrix.shape)
     if add_dims:
         return np.repeat(matrix[np.newaxis,:,:],3,axis=0)
     else:
@@ -43,11 +38,46 @@ def resizer(matrix, new_x, new_y, transform=None, transform_args=None, add_dims 
 """
 need to figure out how to transform the cwt data to look presentable/recognisable for the model
 """
+# we don't want to change depth!!!
+def brute_force_find_ratio(matrix, t_x, t_y, t_d, stepper):
+    l = [t_x,t_y]
+    compare = prod(matrix.shape)
+    if compare == l[0]*l[1]*t_d:
+        return l
+    while True:
+        for i in range(len(l)):
+            for j in range(1,stepper+1):
+                l[i] = l[i]+ ()
+
+def get_balanced_with_depth_divisable_by_3(matrix):
+    sh = matrix.shape
+    d = matrix.shape[2]/3
+    assert d % 1 == 0
+    small = (sh[0] if sh[0]<sh[1]else sh[1]) * d
+    big = sh[1] if sh[1]<sh[0]else sh[0]
+    if big < small:
+        i_big = small
+        small = big
+        big = i_big
+    if big == small:
+        return small,big,3
+
+    besto = 0
+    #it doesn't matter which one of the first two dimensions is the smaller we will reshape them anyway
+    change = 1
+    while big-change > small+change:
+        if (big-change)*(small+change) == big*small:
+            besto = change
+
+        change = change + 1
+    return small+change,big-change,3
 
 def reshaper(signals, new_x, new_y, new_depth, transform=None, transform_args=None):
     if transform:
-        print("nope")
         signals = transform(signals, *transform_args)
+
+
+    np.reshape()
 
 
 
@@ -100,7 +130,6 @@ class EEGNpDataset(Dataset):
         self.transform = transform
         self.trans_args = trans_args
         self.ch = -1
-
 
     def change_mode(self, ch=-1):
         # ch being -1 means return all in get_item
