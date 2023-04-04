@@ -38,16 +38,6 @@ def resizer(matrix, new_x, new_y, transform=None, transform_args=None, add_dims 
 """
 need to figure out how to transform the cwt data to look presentable/recognisable for the model
 """
-# we don't want to change depth!!!
-def brute_force_find_ratio(matrix, t_x, t_y, t_d, stepper):
-    l = [t_x,t_y]
-    compare = prod(matrix.shape)
-    if compare == l[0]*l[1]*t_d:
-        return l
-    while True:
-        for i in range(len(l)):
-            for j in range(1,stepper+1):
-                l[i] = l[i]+ ()
 
 def get_balanced_with_depth_divisable_by_3(matrix):
     sh = matrix.shape
