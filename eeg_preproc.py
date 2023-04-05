@@ -40,11 +40,14 @@ need to figure out how to transform the cwt data to look presentable/recognisabl
 """
 
 def get_balanced_with_depth_divisable_by_3(matrix):
+    sorts = np.argsort(matrix.shape)
+
     sh = matrix.shape
-    d = matrix.shape[2]/3
+    d = sh[sorts[0]]/3
     assert d % 1 == 0
-    small = (sh[0] if sh[0]<sh[1]else sh[1]) * d
-    big = sh[1] if sh[1]<sh[0]else sh[0]
+    small = sh[sorts[1]]*int(d)
+
+    big = sh[sorts[2]]
     if big < small:
         i_big = small
         small = big
@@ -60,14 +63,15 @@ def get_balanced_with_depth_divisable_by_3(matrix):
             besto = change
 
         change = change + 1
-    return small+change,big-change,3
+    return small+besto,big-besto,3
 
-def reshaper(signals, new_x, new_y, new_depth, transform=None, transform_args=None):
+def reshaper(signals, transform=None, transform_args=None):
     if transform:
         signals = transform(signals, *transform_args)
 
-
-    np.reshape()
+    x,y,b = get_balanced_with_depth_divisable_by_3(signals)
+    resa = np.reshape(signals,(x,y,b))
+    return resa
 
 
 
@@ -645,7 +649,7 @@ class EEGDataset(Dataset):
 
 
 if __name__ == '__main__':
-    TEST = 3
+    TEST = 4
     if TEST == 0:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,)#transform=resizer, trans_args=(224,224))
@@ -719,10 +723,17 @@ if __name__ == '__main__':
             print("w")
     elif TEST == 4:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
-                            tstart=0, tend=240, batch_size=8, medicated=1, transform=resizer, trans_args=(224,224))
+                            tstart=0, tend=240, batch_size=8, medicated=1,) #transform=resizer, trans_args=(224,224))
         # need to not transform
         dset.info()
+        print(dset[0])
+        res = transform_to_cwt(dset[0][0],np.linspace(1,30,num=24),morlet2,True)
+        print(res.shape)
+        print(get_balanced_with_depth_divisable_by_3(res))
+        res_re = (reshaper(res))
+        print(res_re.shape)
         #dset_train, dset_test = dset.split(0.8, shuffle=True)
         #del(dset)
         #dset_train.info()
         #dset_test.info()
+
