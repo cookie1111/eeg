@@ -73,8 +73,6 @@ def reshaper(signals, transform=None, transform_args=None):
     resa = np.reshape(signals,(x,y,b))
     return resa
 
-
-
 def transform_to_cwt(signals, widths, wavelet, real=True,transform=None, transform_args=None):
 
     if transform:
@@ -90,7 +88,6 @@ def transform_to_cwt(signals, widths, wavelet, real=True,transform=None, transfo
 
     print(np.array(new_signals).shape)
     return np.array(new_signals)
-
 
 class EEGNpDataset(Dataset):
 
@@ -732,8 +729,11 @@ if __name__ == '__main__':
         print(get_balanced_with_depth_divisable_by_3(res))
         res_re = (reshaper(res))
         print(res_re.shape)
-        #dset_train, dset_test = dset.split(0.8, shuffle=True)
-        #del(dset)
-        #dset_train.info()
-        #dset_test.info()
-
+        res_res = resizer(res_re, 224,224, add_dims=False)
+        print(res_res.shape)
+        fig, axs = plt.subplots(4)
+        axs[0].imshow(res[0,:,:])
+        axs[1].imshow(res_re[:,:,0])
+        axs[2].imshow(res_re[:,:,1])
+        axs[3].imshow(res_re[:,:,2])
+        plt.show()
