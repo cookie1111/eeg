@@ -1,6 +1,7 @@
 import numpy as np
 import sys
 from scipy.signal import cwt, morlet2
+import sklearn
 from sklearn.decomposition import FastICA
 import matplotlib.pyplot as plt
 from mne.io import read_raw_eeglab, read_raw_brainvision
@@ -70,7 +71,7 @@ def reshaper(signals, transform=None, transform_args=None):
         signals = transform(signals, *transform_args)
 
     x,y,b = get_balanced_with_depth_divisable_by_3(signals)
-    resa = np.reshape(signals,(x,y,b))
+    resa = np.reshape(signals,(x,y,b),'F')
     return resa
 
 def transform_to_cwt(signals, widths, wavelet, real=True,transform=None, transform_args=None):
@@ -731,9 +732,11 @@ if __name__ == '__main__':
         print(res_re.shape)
         res_res = resizer(res_re, 224,224, add_dims=False)
         print(res_res.shape)
+        print(np.max(res), np.max(res_re))
         fig, axs = plt.subplots(4)
-        axs[0].imshow(res[0,:,:])
-        axs[1].imshow(res_re[:,:,0])
-        axs[2].imshow(res_re[:,:,1])
-        axs[3].imshow(res_re[:,:,2])
+        axs[0].imshow(sklearn.preprocessing.minmax_scale(res[0,:,:]))
+        res_sca = sklearn.preprocessing.minmax_scale(res_re)
+        axs[1].imshow(res_sca[:50,:,:])
+        axs[2].imshow(res_sca[50:100,:,:])
+        axs[3].imshow(res_sca[100:150,:,:])
         plt.show()
