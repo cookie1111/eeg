@@ -25,6 +25,16 @@ NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the 
 
 """
 
+
+def delete_file_with_name(root_folder_path="ds003490-download"):
+    for dirpath, dirnames, filenames in os.walk(root_folder_path):
+        for filename in filenames:
+            if filename == "0_0_240_noDrop_0d9_1_epo.fif":
+                file_path = os.path.join(dirpath, filename)
+                os.remove(file_path)
+                print(f"Deleted {file_path}")
+
+
 def resizer(matrix, new_x, new_y, transform=None, transform_args=None, add_dims = True):
     # might have to assert float type
     if transform:
@@ -649,7 +659,7 @@ class EEGDataset(Dataset):
 
 
 if __name__ == '__main__':
-    TEST = 4
+    TEST = 5
     if TEST == 0:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,)#transform=resizer, trans_args=(224,224))
@@ -742,3 +752,8 @@ if __name__ == '__main__':
         axs[2].imshow(res_sca[50:100,:,:])
         axs[3].imshow(res_sca[100:150,:,:])
         plt.show()
+    elif TEST == 5:
+        #21*64 but with 2second interval(1000 steps) -> resize with cubic interpolation
+        # search for which signal contributes the most difference between on medication and off medication in patients
+        # delete_file_with_name()
+        pass
