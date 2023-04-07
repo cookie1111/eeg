@@ -34,6 +34,8 @@ def resizer(matrix, new_x, new_y, transform=None, transform_args=None, add_dims 
     if add_dims:
         return np.repeat(matrix[np.newaxis,:,:],3,axis=0)
     else:
+        if matrix.shape[-1] == 3:
+            matrix = np.transpose(2, 0, 1)
         return matrix
 
 """
