@@ -18,18 +18,78 @@ from torch.utils.data import Dataset, DataLoader
 from math import ceil, prod
 import random
 from wavelets import calculate_cwt_coherence
-"""
-coherence has to be implemented seperatly since we need to do node mixing so i should construct it as a seperate process
 
-NEED TO FIGURE OUT WHICH NODES AND HOW MANY WIDTHS TO USE -> how do i build the transform function to be used in the dataset also i should fix preloading
 
-"""
+def coherence_between_matrices(matrix1, matrix2):
+    # Check that the matrices have the same shape
+    assert matrix1.shape == matrix2.shape, "Matrices have different shapes"
+    n_electrodes, n_samples = matrix1.shape
+
+    # Calculate the cross-spectral density matrix between the two matrices
+    cxy = np.zeros((n_electrodes, n_samples), dtype=np.complex128)
+    for i in range(n_electrodes):
+        cxy[i] = np.multiply(np.fft.fft(matrix1[i]), np.fft.fft(matrix2[i]).conj())
+
+    # Calculate the power spectral density of each matrix
+    pxx = np.zeros((n_electrodes, n_samples), dtype=np.complex128)
+    for i in range(n_electrodes):
+        pxx[i] = np.multiply(np.fft.fft(matrix1[i]), np.fft.fft(matrix1[i]).conj())
+    pyy = np.zeros((n_electrodes, n_samples), dtype=np.complex128)
+    for i in range(n_electrodes):
+        pyy[i] = np.multiply(np.fft.fft(matrix2[i]), np.fft.fft(matrix2[i]).conj())
+
+    # Calculate the magnitude-squared coherence (MSC) between the rows of the matrices
+    msc = np.zeros(n_electrodes)
+    for i in range(n_electrodes):
+        msc[i] = np.abs(cxy[i]).mean() ** 2 / (pxx[i].mean() * pyy[i].mean())
+
+    return msc
+
+
+def load_subject_data(root_folder):
+    """
+    Loads numpy arrays from subfolders of the given root folder.
+
+    Args:
+    - root_folder (str): Path to the root folder containing subject subfolders.
+
+    Returns:
+    - data (dict): A dictionary containing the loaded numpy arrays, with subject IDs as keys.
+    """
+    # Initialize empty dictionary to hold data
+    data = {}
+
+    # Loop over subject subfolders
+    for i in range(1, 51):
+        # Format subject number with leading zeros
+        sub_id = f"{i:03}"
+
+        # Create path to subject subfolder
+        sub_folder = os.path.join(root_folder, f"sub-{sub_id}")
+
+        # Check if subfolder exists and contains 2 subfolders
+        if os.path.exists(sub_folder) and len(os.listdir(sub_folder)) == 2:
+            # Loop over subfolders in the subject subfolder
+            compare = []
+            for subdir in os.listdir(sub_folder):
+                subdir_path = os.path.join(sub_folder, subdir)
+                if os.path.isdir(subdir_path):
+                    npy_subfolder = os.path.join(subdir_path, "eeg")
+                    if os.path.exists(npy_subfolder):
+                        # Loop over possible filenames
+                        for j in [0, 1]:
+                            npy_path = os.path.join(npy_subfolder, f"{j}_0_240_noDrop_0d9_1_np.npy")
+                            if os.path.exists(npy_path):
+                                compare.append(np.load(npy_path))
+            data[sub_id] = coherence_between_matrices(compare[0], compare[1])
+
+    return data
 
 
 def delete_file_with_name(root_folder_path="ds003490-download"):
     for dirpath, dirnames, filenames in os.walk(root_folder_path):
         for filename in filenames:
-            if filename == "0_0_240_noDrop_0d9_1_epo.fif":
+            if filename == "0_0_240_noDrop_0.9_1_epo.fif":
                 file_path = os.path.join(dirpath, filename)
                 os.remove(file_path)
                 print(f"Deleted {file_path}")
@@ -753,7 +813,9 @@ if __name__ == '__main__':
         axs[3].imshow(res_sca[100:150,:,:])
         plt.show()
     elif TEST == 5:
+        EEGNpDataset("ds003490-download", participants="participants.tsv",
+                     tstart=0, tend=240, batch_size=8, medicated=0, )
         #21*64 but with 2second interval(1000 steps) -> resize with cubic interpolation
         # search for which signal contributes the most difference between on medication and off medication in patients
-        # delete_file_with_name()
+        #delete_file_with_name()
         pass
