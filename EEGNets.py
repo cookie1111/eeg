@@ -85,12 +85,6 @@ def main():
     batch_size = 16
     learning_rate = 0.001
 
-    # Prepare your data
-    train_rgb_coherence_matrices = ...  # Replace with your training RGB coherence matrices
-    train_labels = ...  # Replace with your training labels
-    val_rgb_coherence_matrices = ...  # Replace with your validation RGB coherence matrices
-    val_labels = ...  # Replace with your validation labels
-
     dtrain, dtest = dset.split(ratios=0.8, shuffle=True, balance_classes=True)
 
     train_loader = torch.utils.data.DataLoader(dtrain, batch_size=batch_size, shuffle=True)
@@ -103,9 +97,17 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
+    best_val_accuracy = 0.0
+    model_save_path = "best_model.pth"
+
     for epoch in range(1, num_epochs + 1):
         train(model, device, train_loader, optimizer, criterion, epoch)
-        test(model, device, val_loader, criterion)
+        val_loss, val_accuracy = test(model, device, val_loader, criterion)
+
+        if val_accuracy > best_val_accuracy:
+            best_val_accuracy = val_accuracy
+            torch.save(model.state_dict(), model_save_path)
+            print(f"Model saved at {model_save_path}")
 
 if __name__ == "__main__":
     main()
