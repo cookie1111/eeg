@@ -18,7 +18,39 @@ from torch.utils.data import Dataset, DataLoader
 from math import ceil, prod
 import random
 from wavelets import calculate_cwt_coherence
+import seaborn as sns
+from scipy.signal import coherence
+from sklearn.decomposition import PCA
 
+
+def eeg_to_rgb_coherence_matrix(eeg_data, fs, nperseg):
+    num_channels = eeg_data.shape[0]
+
+    # Compute the coherence matrix
+    coherence_matrix = np.zeros((num_channels, num_channels))
+    for i in range(num_channels):
+        for j in range(num_channels):
+            if i == j:
+                coherence_matrix[i, j] = 1
+            elif i < j:
+                f, c = coherence(eeg_data[i], eeg_data[j], fs, nperseg=nperseg)
+                coherence_matrix[i, j] = np.mean(c)
+            else:
+                coherence_matrix[i, j] = coherence_matrix[j, i]
+        # Normalize the coherence matrix to [0, 1]
+        coherence_matrix = (coherence_matrix - np.min(coherence_matrix)) / (
+                    np.max(coherence_matrix) - np.min(coherence_matrix))
+
+        # Convert the coherence matrix to an RGB image (using PCA)
+    pca = PCA(n_components=3)
+    reshaped_coherence_matrix = np.reshape(coherence_matrix, (-1, num_channels))
+    transformed_coherence_matrix = pca.fit_transform(reshaped_coherence_matrix)
+    rgb_coherence_matrix = np.reshape(transformed_coherence_matrix, (num_channels, num_channels, 3))
+
+    # Resize the image to 224x224
+    resized_image = cv2.resize(rgb_coherence_matrix, (224, 224), interpolation=cv2.INTER_LINEAR)
+
+    return resized_image
 
 def coherence_between_matrices(matrix1, matrix2):
     # Check that the matrices have the same shape
@@ -57,7 +89,7 @@ def load_subject_data(root_folder):
     - data (dict): A dictionary containing the loaded numpy arrays, with subject IDs as keys.
     """
     # Initialize empty dictionary to hold data
-    data = {}
+    data = []
 
     # Loop over subject subfolders
     for i in range(1, 51):
@@ -81,8 +113,7 @@ def load_subject_data(root_folder):
                             npy_path = os.path.join(npy_subfolder, f"{j}_0_240_noDrop_0d9_1_np.npy")
                             if os.path.exists(npy_path):
                                 compare.append(np.load(npy_path))
-            data[sub_id] = coherence_between_matrices(compare[0], compare[1])
-
+            data.append(coherence_between_matrices(compare[0], compare[1]))
     return data
 
 
@@ -719,7 +750,7 @@ class EEGDataset(Dataset):
 
 
 if __name__ == '__main__':
-    TEST = 5
+    TEST = 6
     if TEST == 0:
         dset = EEGNpDataset("ds003490-download", participants="participants.tsv",
                           tstart=0, tend=240, batch_size=8,)#transform=resizer, trans_args=(224,224))
@@ -818,4 +849,32 @@ if __name__ == '__main__':
         #21*64 but with 2second interval(1000 steps) -> resize with cubic interpolation
         # search for which signal contributes the most difference between on medication and off medication in patients
         #delete_file_with_name()
+        pass
+    elif TEST == 6:
+        data = np.array(load_subject_data("ds003490-download"))
+
+        # Set electrode and subject names
+        subject_names = [f"Sub {i + 1}" for i in range(data.shape[0])]
+        electrode_names = [f"El {i + 1:03d}" for i in range(data.shape[1])]
+
+        averages = np.mean(data, axis=0)
+        sorted_indices = np.argsort(averages)[::-1]
+
+        # Create a new array with the top 5 columns set to 1 and the rest set to 0
+        mask = np.zeros(data.shape[1])
+        mask[sorted_indices[-5:]] = 1
+
+        # Create heatmap using seaborn and apply the mask to highlight the columns
+        fig, ax = plt.subplots(figsize=(10, 10))
+        sns.heatmap(data, cmap="coolwarm", xticklabels=electrode_names, yticklabels=subject_names, ax=ax,
+                    mask=np.broadcast_to(mask, data.shape))
+
+        # Set plot title and axis labels
+        ax.set_xlabel("Subjects")
+        ax.set_ylabel("Electrodes")
+        ax.set_title("Top 5 Columns by Average Value")
+
+        # Show plot
+        plt.show()
+    elif TEST == 7:
         pass
