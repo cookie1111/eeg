@@ -190,7 +190,7 @@ def transform_to_cwt(signals, widths, wavelet, real=True,transform=None, transfo
         else:
             new_signals.append(np.imag(cwt(signals[i,:], wavelet, widths)))
 
-    print(np.array(new_signals).shape)
+    #print(np.array(new_signals).shape)
     return np.array(new_signals)
 
 class EEGNpDataset(Dataset):

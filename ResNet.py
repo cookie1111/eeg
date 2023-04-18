@@ -137,20 +137,20 @@ if __name__ == "__main__":
         for i in range(64):
             res = ResNet18(2,2).to(device)
             res = res.double()
-            optimizer = optim.SGD(res.parameters(), lr=0.01, momentum=0.9)
+            optimizer = optim.SGD(res.parameters(), lr=0.0001, momentum=0.9)
             criterion = nn.CrossEntropyLoss()
             dtrain.change_mode(ch=i)
             dtest.change_mode(ch=i)
             train(res,
                   DataLoader(dtrain, batch_size=32,shuffle=True,num_workers=4),
-                  DataLoader(dtest, batch_size=32,shuffle=True,num_workers=4),
+                  DataLoader(dtest, batch_size=32,shuffle=False,num_workers=4),
                   optimizer, criterion, device,channel=i)
     elif TEST == 1:
         res = ResNet18(2, 2).to(device)
         res = res.double()
-        optimizer = optim.SGD(res.parameters(), lr=0.01, momentum=0.9)
+        optimizer = optim.SGD(res.parameters(), lr=0.0001, momentum=0.9)
         criterion = nn.CrossEntropyLoss()
         train(res,
               DataLoader(dtrain, batch_size=4, shuffle=True, num_workers=1),
               DataLoader(dtest, batch_size=4, shuffle=True, num_workers=1),
-              optimizer, criterion, device, name="resnet_2unfrozen_2additional_layers")
+              optimizer, criterion, device, name="resnet_2unfrozen_2additional_layers_better_lr")
