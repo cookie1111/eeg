@@ -5,7 +5,7 @@ import torch.optim as optim
 from scipy.signal import morlet2
 
 from eeg_preproc import EEGNpDataset as EEGDataset, reshaper, transform_to_cwt, resizer
-
+from alternative_ds import EEGCwtDataset
 
 def add_dim(matrix):
     mat = np.expand_dims(matrix, axis=0)
@@ -59,6 +59,7 @@ def train(model, device, train_loader, optimizer, criterion, epoch):
     correct = 0
 
     for batch_idx, (data, target) in enumerate(train_loader):
+
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
@@ -109,11 +110,8 @@ def create_signal_handler(model, optimizer):
     return signal_handler
 
 def main():
-    dset = EEGDataset("ds003490-download", participants="participants.tsv",
-                      tstart=0, tend=240, batch_size=256, transform=transform_to_cwt,
-                      trans_args=
-                                   (np.linspace(1, 30, num=120), morlet2, True),
-                      debug=False)
+    dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
+                      tstart=0, tend=240, batch_size=256,debug=False, transform=add_dim)
     # Hyperparameters
     num_epochs = 10
     batch_size = 16
@@ -123,8 +121,10 @@ def main():
 
     del dset
     for i in range(64):
-        dtrain.change_mode(ch=i)
-        dtest.change_mode(ch=i)
+        dtrain.select_channel(i)
+        dtest.select_channel(i)
+        #dtrain.change_mode(ch=i)
+        #dtest.change_mode(ch=i)
         train_loader = torch.utils.data.DataLoader(dtrain, batch_size=batch_size, shuffle=True)
         val_loader = torch.utils.data.DataLoader(dtest, batch_size=batch_size, shuffle=False)
 

@@ -22,6 +22,38 @@ import seaborn as sns
 from scipy.signal import coherence
 from sklearn.decomposition import PCA
 
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+
+def node_wise_classification(dtrain, dtest, node, accuracy, precision, recall, f1):
+    train_loader = DataLoader(dtrain,32,shuffle=True)
+    test_loader = DataLoader(dtest,32,shuffle=True)
+    clf = SGDClassifier(loss='hinge', alpha=1 / (1 * len(train_loader)), max_iter=1000, tol=1e-3, random_state=42)
+
+    for batch in train_loader:
+        features, labels = batch
+        features = features.view(features.size(0), -1)
+        clf.partial_fit(features.numpy(),labels.numpy(),np.unique(labels.numpy()))
+    dtrain.clear_cache()
+    y_test, y_pred = [],[]
+    for batch in test_loader:
+        features, labels = batch
+        features = features.view(features.size(0), -1)
+        y_test.extend(labels.numpy())
+        y_pred.extend(clf.predict(features.numpy()))
+    dtest.clear_cache()
+    # Calculate performance metrics
+    accuracy[node] = accuracy_score(y_test, y_pred)
+    precision[node] = precision_score(y_test, y_pred, average='weighted')
+    recall[node] = recall_score(y_test, y_pred, average='weighted')
+    f1[node] = f1_score(y_test, y_pred, average='weighted')
+
+    return accuracy, precision, recall, f1
+
 
 def eeg_to_rgb_coherence_matrix(eeg_data, fs, nperseg):
     num_channels = eeg_data.shape[0]
@@ -51,6 +83,7 @@ def eeg_to_rgb_coherence_matrix(eeg_data, fs, nperseg):
     resized_image = cv2.resize(rgb_coherence_matrix, (224, 224), interpolation=cv2.INTER_LINEAR)
 
     return resized_image
+
 
 def coherence_between_matrices(matrix1, matrix2):
     # Check that the matrices have the same shape
