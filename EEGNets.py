@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from scipy.signal import morlet2
+import sys
 
 from eeg_preproc import EEGNpDataset as EEGDataset, reshaper, transform_to_cwt, resizer
 from alternative_ds import EEGCwtDataset
@@ -34,21 +35,28 @@ class CoherenceClassifier(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2)
         )
 
+        self.attention = nn.MultiheadAttention(embed_dim=64, num_heads=8)
+
         self.fc = nn.Sequential(
-            nn.Linear(64 * (height//(2**3)) * (width//(2**3)), 1024),
+            nn.Linear(64 * (height // (2 ** 3)) * (width // (2 ** 3)), 1024),
             nn.ReLU(),
             nn.Dropout(p=0.5),
             nn.Linear(1024, num_classes)
         )
 
     def forward(self, x):
-        #print(x.shape[2]//(2**3),x.shape[3]//(2**3))
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
-        #print(x.shape)
-        x = x.view(x.size(0), -1)
-        #print(x.shape)
+
+        # Reshape x to fit the input shape requirement of nn.MultiheadAttention
+        x = x.view(x.size(0), -1, 64)
+        x = x.permute(1, 0, 2)  # nn.MultiheadAttention requires input shape (seq_len, batch, embed_dim)
+
+        attn_output, _ = self.attention(x, x, x)  # Self-attention
+        x = attn_output.permute(1, 0, 2)  # Reshape back to (batch, seq_len, embed_dim)
+
+        x = x.view(x.size(0), -1)  # Flatten for fully connected layer
         x = self.fc(x)
 
         return x
