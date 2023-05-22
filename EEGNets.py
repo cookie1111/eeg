@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 from eeg_preproc import EEGNpDataset as EEGDataset, reshaper, transform_to_cwt, resizer
 from alternative_ds import EEGCwtDataset
+from time_conv import ConvTimeAttention
 
 
 def add_dim(matrix):
@@ -187,8 +188,8 @@ def main():
                     save_checkpoint(model, optimizer, epoch, f'checkpoint_epoch_{epoch}.pth')
     else:
         dset = EEGDataset("ds003490-download", participants="participants.tsv",
-                          tstart=0, tend=240, batch_size=64, name="_TESTER_clean",
-                          transform=add_dim)  # transform=resizer, trans_args=(224,224))
+                          tstart=0, tend=240, batch_size=64, name="_TESTER_clean",)
+                          #transform=add_dim)  # transform=resizer, trans_args=(224,224))
 
         # Hyperparameters
         num_epochs = 10
@@ -204,7 +205,8 @@ def main():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         num_classes = 2  # Replace with the number of classes you have
-        model = CoherenceClassifier(num_classes, 63, 500).to(device)
+        model = ConvTimeAttention(num_channels=63, num_classes=2).to(device)
+        #model = CoherenceClassifier(num_classes, 63, 500).to(device)
         model = model.double()
         optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
