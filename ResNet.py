@@ -121,7 +121,7 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if not special:
         dset = EEGDataset("ds003490-download", participants="participants.tsv",
-                          tstart=0, tend=240, batch_size=32,
+                          tstart=0, tend=240, batch_size=32, name="_TESTER_clean",
                           transform=resizer, trans_args=(224,224))
     else:
         dset = EEGDataset("ds003490-download", participants="participants.tsv",

@@ -230,8 +230,9 @@ class EEGNpDataset(Dataset):
 
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
                  tend: int = 30, special_part: str = None, medicated: int = 1,
-                 batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9,
+                 batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9, name: str = "",
                  stack_rgb = True, transform = lambda x:x, trans_args = (), freq = 500, debug = False):
+        self.name = name
         self.freq = freq
         self.debug = debug
         self.overlap = overlap
@@ -267,7 +268,7 @@ class EEGNpDataset(Dataset):
 
     def load_data(self):
         fresh_entries = True
-        f_name = f"len_{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np"
+        f_name = f"len_{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np{self.name}"
         f_name = f_name.replace('.','d')
         if self.debug:
             print(f"DEBUG: Checking if {f_name} already mentioned in the subjects ds.")
@@ -316,11 +317,11 @@ class EEGNpDataset(Dataset):
                 eeg_file = os.path.join(subject_path_eeg,
                                         [f for f in os.listdir(subject_path_eeg) if f.endswith('.set')][0])
                 if not self.special_part:
-                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np")
+                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np{self.name}")
                     save_dest = save_dest.replace('.','d')+'npy.npy'
                     if os.path.isfile(save_dest):
                         os.remove(save_dest)
-                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np")
+                    save_dest = os.path.join(subject_path_eeg, f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np{self.name}")
                     save_dest = save_dest.replace('.', 'd')+".npy"
 
                     if self.debug:
@@ -525,7 +526,8 @@ class EEGNpDataset(Dataset):
 class EEGDataset(Dataset):
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
                  tend: int = 30, special_part: str = None, medicated: int = 0, cache_amount: int = 1,
-                 batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9, stack_rgb = True, transform = lambda x:x, trans_args = ()):
+                 batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9,
+                 stack_rgb = True, transform = lambda x:x, trans_args = ()):
         """
         Grab all subjects, for now only the medicated session is supported, add a class field to the whole thing and
         window their eeg signal slice(slice is based off special_part parameter). Windows are accessed via index, and
@@ -547,6 +549,7 @@ class EEGDataset(Dataset):
         file since they are too large to hold all in RAM
         :param shuffle: wether to shuffle the participants when reading the dataset
         """
+        self.name = name
         self.overlap = overlap
         self.duration = duration
         self.stack_em = stack_rgb
