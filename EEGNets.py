@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from eeg_preproc import EEGNpDataset as EEGDataset, reshaper, transform_to_cwt, resizer
 from alternative_ds import EEGCwtDataset
-from time_conv import ConvTimeAttention
+from time_conv import ConvTimeAttention, ConvTimeAttentionV2
 
 
 def add_dim(matrix):
@@ -16,6 +16,13 @@ def add_dim(matrix):
     # print(mat.shape)
     return mat
 
+def reshaper(signals, transform=None, transform_args=None):
+    if transform:
+        signals = transform(signals, *transform_args)
+
+    resa = np.reshape(signals, (512, 500))
+    return resa
+#lambda x,y,z: x.view(16, 512, 500)
 
 class CoherenceClassifier(nn.Module):
     def __init__(self, num_classes, height, width):
@@ -81,6 +88,7 @@ def train(model, device, train_loader, optimizer, criterion, epoch):
     progress_bar = tqdm(enumerate(train_loader), total=len(train_loader), unit='batch')
 
     for batch_idx, (data, target) in progress_bar:
+        data = data.view(16, 512, 500)
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
@@ -143,6 +151,7 @@ def create_signal_handler(model, optimizer):
 def main():
     CHANNEL_WISE = False
 
+
     if CHANNEL_WISE:
         dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
                              tstart=0, tend=240, batch_size=256, debug=False, transform=add_dim)
@@ -187,17 +196,26 @@ def main():
                 if epoch % checkpoint_interval == 0:
                     save_checkpoint(model, optimizer, epoch, f'checkpoint_epoch_{epoch}.pth')
     else:
-        dset = EEGDataset("ds003490-download", participants="participants.tsv",
-                          tstart=0, tend=240, batch_size=64, name="_TESTER_clean",)
-                          #transform=add_dim)  # transform=resizer, trans_args=(224,224))
+        #dset = EEGDataset("ds003490-download", participants="participants.tsv",
+        #                  tstart=0, tend=240, batch_size=8, transform=reshaper,
+        #                  trans_args=(transform_to_cwt,(np.linspace(1, 30, num=8), morlet2, True)))
+
+        #dset = EEGDataset("ds003490-download", participants="participants.tsv",
+        #                  tstart=0, tend=240, batch_size=64, name="_TESTER_clean",)
+        #                  #transform=add_dim)  # transform=resizer, trans_args=(224,224))
+
+        dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
+                             tstart=0, tend=240, batch_size=8, )
 
         # Hyperparameters
-        num_epochs = 10
+        num_epochs = 50
         batch_size = 16
         learning_rate = 0.001
 
         # need to not transform
         dtrain, dtest = dset.split(0.8, shuffle=True)
+        dtrain.select_channel(-1)
+        dtest.select_channel(-1)
 
         train_loader = torch.utils.data.DataLoader(dtrain, batch_size=batch_size, shuffle=True)
         val_loader = torch.utils.data.DataLoader(dtest, batch_size=batch_size, shuffle=False)
@@ -205,14 +223,14 @@ def main():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         num_classes = 2  # Replace with the number of classes you have
-        model = ConvTimeAttention(num_channels=63, num_classes=2).to(device)
+        model = ConvTimeAttentionV2(num_channels=512, num_classes=2).to(device)
         #model = CoherenceClassifier(num_classes, 63, 500).to(device)
         model = model.double()
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.001)
         criterion = nn.CrossEntropyLoss()
 
         best_val_accuracy = 0.0
-        model_save_path = f"best_model_basic_TESTER.pth"
+        model_save_path = f"best_model_basic_TESTER_v2_att_cwt.pth"
 
         for epoch in range(1, num_epochs + 1):
             train(model, device, train_loader, optimizer, criterion, epoch)

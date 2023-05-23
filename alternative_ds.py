@@ -10,14 +10,23 @@ import random
 from math import ceil
 import torch
 import json
+import pandas as pd
+from autoreject import AutoReject
 
+DEBUG = False
+
+
+
+def debug_print( message):
+    if DEBUG:
+        print(f"DEBUG: {message}")
 
 class EEGCwtDataset(EEGNpDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.cwt_cache = [None] * len(self.epochs_list)
         self.parts = len(self.epochs_list)
-        self.widths = np.linspace(1, 30, num=40)
+        self.widths = np.linspace(1, 30, num=8)
         # self.debug = True
 
     def clear_cache(self):
@@ -25,15 +34,28 @@ class EEGCwtDataset(EEGNpDataset):
 
     def apply_cwt(self, data: np.ndarray, channel: int):
         # print(data[channel].shape,)
-        cwt_result = cwt(data[channel], morlet2, self.widths)
+        if channel == -1:
+            # Apply CWT to all channels and stack the results
+            cwt_results = [cwt(data[ch], morlet2, self.widths) for ch in range(data.shape[0])]
+            cwt_result = np.concatenate(cwt_results, axis=1)
+        else:
+            cwt_result = cwt(data[channel], morlet2, self.widths)
         return np.array(cwt_result)
 
     def select_channel(self, channel: int):
         self.clear_cache()
-        self.reset()
-        gc.collect()
+        #self.reset()
+        #gc.collect()
         self.load_data()
-        if 0 <= channel < self.epochs_list[0].shape[0]:
+        if channel == -1:
+            self.cwt_cache = [None] * len(self.epochs_list)
+            self.ch = channel
+            index = 0
+            while self.epochs_list:
+                epoch = self.epochs_list.pop(0)  # Remove and return the first element
+                self.cwt_cache[index] = np.real(self.apply_cwt(epoch, channel))
+                index += 1
+        elif 0 <= channel < self.epochs_list[0].shape[0]:
             self.cwt_cache = [None] * len(self.epochs_list)
             self.ch = channel
             index = 0
@@ -136,7 +158,7 @@ class EEGCwtDataset(EEGNpDataset):
             self.epochs_list = self.epochs_list or []
             self.epochs_list.append(arr)
 
-            l = calc_samples(arr, self.duration, self.freq, self.overlap)
+            l = self.calc_samples(arr)
             debug_print(f"arr info = {arr.shape}, number of samples= {l}")
 
             self.data_points = self.data_points or []
@@ -282,7 +304,7 @@ if __name__ == "__main__":
         dtrain.select_channel(i)
         dtest.select_channel(i)
 
-        node_wise_classification(dtrain,dtest,i,accuracy,precision,recall,f1)
+        #node_wise_classification(dtrain,dtest,i,accuracy,precision,recall,f1)
 
     with open("performance.txt", 'w') as f:
         json.dump(performance_metrics, f, indent=4)
