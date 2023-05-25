@@ -88,7 +88,8 @@ def train(model, device, train_loader, optimizer, criterion, epoch):
     progress_bar = tqdm(enumerate(train_loader), total=len(train_loader), unit='batch')
 
     for batch_idx, (data, target) in progress_bar:
-        data = data.view(16, 512, 500)
+        #print(data.shape)
+        #data = data.view(16, 512, 500)
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
@@ -137,24 +138,14 @@ def save_checkpoint(model, optimizer, epoch, checkpoint_path):
     }, checkpoint_path)
 
 
-# Function to handle keyboard interrupt (Ctrl+C)
-def create_signal_handler(model, optimizer):
-    def signal_handler(sig, frame):
-        print('Interrupted! Saving model checkpoint...')
-        save_checkpoint(model, optimizer, epoch, 'interrupted_checkpoint.pth')
-        print('Checkpoint saved. Exiting...')
-        sys.exit(0)
-
-    return signal_handler
-
 
 def main():
-    CHANNEL_WISE = False
+    CHANNEL_WISE = 3
 
 
-    if CHANNEL_WISE:
+    if CHANNEL_WISE == 1:
         dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
-                             tstart=0, tend=240, batch_size=256, debug=False, transform=add_dim)
+                             tstart=0, tend=240, batch_size=256, debug=False, transform=add_dim, width=30)
         # Hyperparameters
         num_epochs = 10
         batch_size = 16
@@ -165,6 +156,7 @@ def main():
         del dset
         for i in range(64):
             dtrain.select_channel(i)
+            print("works?")
             dtest.select_channel(i)
             # dtrain.change_mode(ch=i)
             # dtest.change_mode(ch=i)
@@ -174,13 +166,13 @@ def main():
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
             num_classes = 2  # Replace with the number of classes you have
-            model = CoherenceClassifier(num_classes, 120, 500).to(device)
+            model = CoherenceClassifier(num_classes, 30, 500).to(device)
             model = model.double()
             optimizer = optim.Adam(model.parameters(), lr=learning_rate)
             criterion = nn.CrossEntropyLoss()
 
             best_val_accuracy = 0.0
-            model_save_path = f"best_model{i}.pth"
+            model_save_path = f"best_model{i}_cwt_one_ch.pth"
 
             for epoch in range(1, num_epochs + 1):
                 train(model, device, train_loader, optimizer, criterion, epoch)
@@ -195,7 +187,7 @@ def main():
                 checkpoint_interval = 5
                 if epoch % checkpoint_interval == 0:
                     save_checkpoint(model, optimizer, epoch, f'checkpoint_epoch_{epoch}.pth')
-    else:
+    elif CHANNEL_WISE == 2:
         #dset = EEGDataset("ds003490-download", participants="participants.tsv",
         #                  tstart=0, tend=240, batch_size=8, transform=reshaper,
         #                  trans_args=(transform_to_cwt,(np.linspace(1, 30, num=8), morlet2, True)))
@@ -205,7 +197,7 @@ def main():
         #                  #transform=add_dim)  # transform=resizer, trans_args=(224,224))
 
         dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
-                             tstart=0, tend=240, batch_size=8, )
+                             tstart=0, tend=240, batch_size=8, width=8)
 
         # Hyperparameters
         num_epochs = 50
@@ -225,6 +217,54 @@ def main():
         num_classes = 2  # Replace with the number of classes you have
         model = ConvTimeAttentionV2(num_channels=512, num_classes=2).to(device)
         #model = CoherenceClassifier(num_classes, 63, 500).to(device)
+        model = model.double()
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.001)
+        criterion = nn.CrossEntropyLoss()
+
+        best_val_accuracy = 0.0
+        model_save_path = f"best_model_basic_TESTER_v2_att_cwt.pth"
+
+        for epoch in range(1, num_epochs + 1):
+            train(model, device, train_loader, optimizer, criterion, epoch)
+            val_loss, val_accuracy = test(model, device, val_loader, criterion)
+
+            if val_accuracy > best_val_accuracy:
+                best_val_accuracy = val_accuracy
+                torch.save(model.state_dict(), model_save_path)
+                print(f"Model saved at {model_save_path}")
+            checkpoint_interval = 5
+            if epoch % checkpoint_interval == 0:
+                save_checkpoint(model, optimizer, epoch, f'checkpoint_epoch_{epoch}.pth')
+    elif CHANNEL_WISE == 3:
+        # dset = EEGDataset("ds003490-download", participants="participants.tsv",
+        #                  tstart=0, tend=240, batch_size=8, transform=reshaper,
+        #                  trans_args=(transform_to_cwt,(np.linspace(1, 30, num=8), morlet2, True)))
+
+        # dset = EEGDataset("ds003490-download", participants="participants.tsv",
+        #                  tstart=0, tend=240, batch_size=64, name="_TESTER_clean",)
+        #                  #transform=add_dim)  # transform=resizer, trans_args=(224,224))
+
+        dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
+                             tstart=0, tend=240, batch_size=8, width=8, cache_len=3)
+
+        # Hyperparameters
+        num_epochs = 50
+        batch_size = 16
+        learning_rate = 0.001
+
+        # need to not transform
+        dtrain, dtest = dset.split(0.8, shuffle=True)
+        dtrain.select_channel(-1)
+        dtest.select_channel(-1)
+
+        train_loader = torch.utils.data.DataLoader(dtrain, batch_size=batch_size, shuffle=False)
+        val_loader = torch.utils.data.DataLoader(dtest, batch_size=batch_size, shuffle=False)
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        num_classes = 2  # Replace with the number of classes you have
+        model = ConvTimeAttentionV2(num_channels=512, num_classes=2).to(device)
+        # model = CoherenceClassifier(num_classes, 63, 500).to(device)
         model = model.double()
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.001)
         criterion = nn.CrossEntropyLoss()

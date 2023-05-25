@@ -12,9 +12,14 @@ import torch
 import json
 import pandas as pd
 from autoreject import AutoReject
+import sys
+import gc
 
 DEBUG = False
 
+def extract_number(string):
+    result = ''.join(filter(str.isdigit, string))
+    return int(result) if result else None
 
 
 def debug_print( message):
@@ -22,11 +27,17 @@ def debug_print( message):
         print(f"DEBUG: {message}")
 
 class EEGCwtDataset(EEGNpDataset):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, cwt_file_name = "cwt_quick_access_full", width = 120, cache_len = 1, prep = False, **kwargs):
+        self.prep = prep
+        self.widths = np.linspace(1, 30, num=width)
+        self.cwt_file_name = cwt_file_name
         super().__init__(*args, **kwargs)
         self.cwt_cache = [None] * len(self.epochs_list)
+        self.cur_cache_subjects = []
         self.parts = len(self.epochs_list)
-        self.widths = np.linspace(1, 30, num=8)
+
+        self.cache_len = cache_len
+
         # self.debug = True
 
     def clear_cache(self):
@@ -36,8 +47,9 @@ class EEGCwtDataset(EEGNpDataset):
         # print(data[channel].shape,)
         if channel == -1:
             # Apply CWT to all channels and stack the results
+            print(data.shape)
             cwt_results = [cwt(data[ch], morlet2, self.widths) for ch in range(data.shape[0])]
-            cwt_result = np.concatenate(cwt_results, axis=1)
+            cwt_result = np.concatenate(cwt_results, axis=0)
         else:
             cwt_result = cwt(data[channel], morlet2, self.widths)
         return np.array(cwt_result)
@@ -45,21 +57,32 @@ class EEGCwtDataset(EEGNpDataset):
     def select_channel(self, channel: int):
         self.clear_cache()
         #self.reset()
-        #gc.collect()
+        gc.collect()
         self.load_data()
         if channel == -1:
-            self.cwt_cache = [None] * len(self.epochs_list)
+            self.cwt_cache = [None] * self.cache_len
             self.ch = channel
             index = 0
+            print(len(self.epochs_list), len(self.subjects))
             while self.epochs_list:
+                print(index)
                 epoch = self.epochs_list.pop(0)  # Remove and return the first element
-                self.cwt_cache[index] = np.real(self.apply_cwt(epoch, channel))
+
+                if not os.path.isfile(os.path.join(f"cwts", f"{self.cwt_file_name}_w{len(self.widths)}_{self.subjects.iloc[index].participant_id}.npy")):
+                    print(f"{self.cwt_file_name}_w{len(self.widths)}_{self.subjects.iloc[index].participant_id}.npy")
+                    hold_me = np.real(self.apply_cwt(epoch, self.ch))
+                    np.save(os.path.join(f"cwts", f"{self.cwt_file_name}_w{len(self.widths)}_{self.subjects.iloc[index].participant_id}.npy"), hold_me)
+
+                if len(self.cur_cache_subjects) < self.cache_len:
+                    self.cur_cache_subjects.append(extract_number(self.subjects.iloc[index].participant_id))
+                    self.cwt_cache[index] = np.load(os.path.join(f"cwts",f"{self.cwt_file_name}_w{len(self.widths)}_{self.subjects.iloc[index].participant_id}.npy"))
                 index += 1
         elif 0 <= channel < self.epochs_list[0].shape[0]:
             self.cwt_cache = [None] * len(self.epochs_list)
             self.ch = channel
             index = 0
             while self.epochs_list:
+
                 epoch = self.epochs_list.pop(0)  # Remove and return the first element
                 self.cwt_cache[index] = np.real(self.apply_cwt(epoch, channel))
                 index += 1
@@ -87,6 +110,22 @@ class EEGCwtDataset(EEGNpDataset):
             sys.exit(1)
 
         if self.ch == -1:
+            if idx_subject in self.cur_cache_subjects:
+                innter = self.cur_cache_subjects.index(idx_subject)
+                if innter > 0 and self.cur_cache_subjects[-1] < len(self.y_list)-1 and idx_inner > self.batch_size:
+                    self.cwt_cache.pop(0)
+                    self.cur_cache_subjects.pop(0)
+                    hold_me = np.load(os.path.join(f"cwts", f"{self.cwt_file_name}_{self.subjects[idx_subject]}.npy"))
+                    self.cur_cache_subjects.append(idx_subject)
+                    self.cwt_cache.append(hold_me)
+                return self.transform(self.cwt_cache[innter][:,idx_inner:(idx_inner + duration)], *self.trans_args), self.y_list[idx_subject]
+            else:
+                self.cwt_cache.pop(0)
+                self.cur_cache_subjects.pop(0)
+                hold_me = np.load(os.path.join(f"cwts", f"{self.cwt_file_name}_{self.subjects[idx_subject]}.npy"))
+                self.cur_cache_subjects.append(idx_subject)
+                self.cwt_cache.append(hold_me)
+                return self.transform(self.cwt_cache[-1][:,idx_inner:(idx_inner + duration)], *self.trans_args), self.y_list[idx_subject]
             raise ValueError("A channel must be selected before getting items.")
         else:
             if self.debug:
@@ -97,6 +136,10 @@ class EEGCwtDataset(EEGNpDataset):
             return self.transform(cwt_data, *self.trans_args), self.y_list[idx_subject]
 
     def load_data(self):
+        #just making the cwt files ready
+        if self.prep:
+            self.load_data_but_cwt()
+            return
         subjects = pd.read_table(os.path.join(self.root_dir, self.participants))
         f_name = f"len_{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np_TESTER_clean".replace(
             '.', 'd')
@@ -106,7 +149,7 @@ class EEGCwtDataset(EEGNpDataset):
         self.epochs_list = None
         self.data_points = None
         montage = mne.channels.make_standard_montage('standard_1020')
-
+        cont = 0
         for subject in subjects.itertuples():
             subject_path = os.path.join(self.root_dir, subject.participant_id)
             y = 1 if subject.Group == "CTL" else 0
@@ -126,6 +169,16 @@ class EEGCwtDataset(EEGNpDataset):
 
             eeg_file = os.path.join(subject_path_eeg,
                                     next(f for f in os.listdir(subject_path_eeg) if f.endswith('.set')))
+
+            """if (os.path.isfile(os.path.join(subject_path_eeg,
+                                            f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np_TESTER_clean".replace(
+                                                '.', 'd') + ".npy")) and cont >= 48):
+                os.remove(os.path.join(subject_path_eeg,
+                                       f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np_TESTER_clean".replace(
+                                           '.', 'd') + ".npy"))"""
+
+            cont = cont + 1
+
             save_dest = os.path.join(subject_path_eeg,
                                      f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np_TESTER_clean".replace(
                                          '.', 'd') + ".npy")
@@ -133,7 +186,7 @@ class EEGCwtDataset(EEGNpDataset):
 
             if os.path.isfile(save_dest):
                 debug_print(f"{save_dest} already exists so no need to load it")
-                arr = np.load(save_dest)
+                arr = np.load(save_dest, mmap_mode="r")
             else:
                 debug_print(f"{save_dest} does not yet exist so filtering and cutting from scratch")
                 raw = mne.io.read_raw_eeglab(eeg_file, preload=True).filter(1, 30).crop(tmin=self.tstart,
@@ -150,8 +203,9 @@ class EEGCwtDataset(EEGNpDataset):
                 epochs_clean = ar.fit_transform(epochs)
 
                 arr = epochs_clean.get_data()
-                arr = raw.get_data()
+                #arr = raw.get_data()
                 # Apply FASTER
+                print(f"SAVED {len(self.y_list)}")
                 np.save(save_dest, arr)
                 debug_print(f"Preprocessed version saved to {save_dest}")
 
@@ -166,6 +220,69 @@ class EEGCwtDataset(EEGNpDataset):
 
             self.y_list.append(y)
             debug_print(f"{subject} has the class {y} meaning its {'PD' if y == 0 else 'CTL'}")
+
+    def load_data_but_cwt(self):
+        subjects = pd.read_table(os.path.join(self.root_dir, self.participants))
+        f_name = f"{self.cwt_file_name}_w{len(self.widths)}"
+        fresh_entries = f_name not in subjects
+        debug_print(f"{f_name} is {'not' if fresh_entries else ''} in subjects")
+        montage = mne.channels.make_standard_montage('standard_1020')
+
+        for subject in subjects.itertuples():
+            subject_path = os.path.join(self.root_dir, subject.participant_id)
+            y = 1 if subject.Group == "CTL" else 0
+            debug_print(f"subject is in {'CTL' if y else 'PD'} group")
+
+            if self.medicated in [0, 2] or y == 1:
+                session = "ses-02" if subject.sess1_Med == "OFF" else "ses-01"
+            else:
+                session = "ses-01" if subject.sess1_Med == "OFF" else "ses-02"
+            subject_path = os.path.join(subject_path, session)
+
+            debug_print(f"subject was {'OFF' if self.medicated == 1 else 'ON'} medication")
+            debug_print(f"using only one session per subject")
+
+            subject_path_eeg = os.path.join(subject_path, os.listdir(subject_path)[0])
+            debug_print(f"loading subjects eeg from {subject_path_eeg}")
+
+
+            save_dest = os.path.join(subject_path_eeg,
+                                     f"{self.medicated}_{self.tstart}_{self.tend}_noDrop_{self.overlap}_{self.duration}_np".replace(
+                                         '.', 'd') + ".npy")
+            eeg_file = os.path.join(subject_path_eeg,
+                                    next(f for f in os.listdir(subject_path_eeg) if f.endswith('.set')))
+            cwt_save_dest = os.path.join(f"cwts", f"{self.cwt_file_name}_w{len(self.widths)}_{subject.participant_id}.npy")
+            debug_print(f"preparing save_destination for CWT transform {cwt_save_dest}")
+
+            if os.path.isfile(cwt_save_dest):
+                debug_print(f"{cwt_save_dest} already exists so no need to load it")
+            else:
+                if os.path.isfile(save_dest):
+                    debug_print(f"{save_dest} already exists so no need to load it")
+                    arr = np.load(save_dest)
+                else:
+                    debug_print(f"{cwt_save_dest} does not yet exist so filtering, cutting and transforming from scratch")
+                    raw = mne.io.read_raw_eeglab(eeg_file, preload=True).filter(1, 30).crop(tmin=self.tstart,
+                                                                                            tmax=self.tend).drop_channels(
+                        ["X", "Y", "Z", "VEOG"])
+                    raw.set_montage(montage)
+                    raw.filter(l_freq=0.1, h_freq=100)
+
+                    # Segment the data into epochs
+                    events = mne.make_fixed_length_events(raw, id=1, duration=self.duration, overlap=self.overlap)
+                    epochs = mne.Epochs(raw, events, tmin=0., tmax=self.duration, baseline=None, preload=True)
+
+                    # Apply AutoReject
+                    ar = AutoReject()
+                    epochs_clean = ar.fit_transform(epochs)
+
+                    arr = epochs_clean.get_data()
+
+                # Calculate CWT transform
+                cwt_transform = self.apply_cwt(arr,-1)
+
+                np.save(cwt_save_dest, cwt_transform)
+                debug_print(f"CWT transform saved to {cwt_save_dest}")
 
     # Other methods remain unchanged
     def split(self, ratios=0.8, shuffle=False, balance_classes=True):
@@ -197,11 +314,11 @@ class EEGCwtDataset(EEGNpDataset):
             return (EEGCwtDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                                   self.medicated, self.batch_size, use_index=bottom, transform=self.transform,
                                   trans_args=self.trans_args,
-                                  overlap=self.overlap, duration=self.duration, debug=False),
+                                  overlap=self.overlap, duration=self.duration, debug=False, width=len(self.widths), cache_len=self.cache_len),
                     EEGCwtDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                                   self.medicated, self.batch_size, use_index=top, transform=self.transform,
                                   trans_args=self.trans_args,
-                                  overlap=self.overlap, duration=self.duration, debug=False))
+                                  overlap=self.overlap, duration=self.duration, debug=False, width=len(self.widths), cache_len=self.cache_len))
         else:
             assert isinstance(ratios, tuple)
             splits = []
@@ -220,7 +337,7 @@ class EEGCwtDataset(EEGNpDataset):
                     bottom = shuffled_idxes[prev_idx: idx]
                 splits.append(
                     EEGCwtDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                                  self.medicated, self.batch_size, use_index=bottom))
+                                  self.medicated, self.batch_size, use_index=bottom, width=len(self.widths), cache_len=self.cache_len))
                 if balance_classes:
                     prev_idx1 = ce1
                     prev_idx0 = ce0
@@ -235,8 +352,9 @@ class EEGCwtDataset(EEGNpDataset):
             splits.append(
                 EEGCwtDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                               self.medicated, self.batch_size,
-                              use_index=bottom))
+                              use_index=bottom, width=len(self.widths), cache_len=self.cache_len))
             return splits
+
 
 
 class TestEEGCwtDataset(unittest.TestCase):
@@ -285,27 +403,35 @@ class TestEEGCwtDataset(unittest.TestCase):
             self.dataset.select_channel(-1)
 
 if __name__ == "__main__":
-    accuracy = {}
-    precision = {}
-    recall = {}
-    f1 = {}
-    batch_size=16
-    performance_metrics = {'accuracy': accuracy,
-                           'precision': precision,
-                           'recall': recall,
-                           'f1': f1}
+    prep = False
 
-    dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
-                        tstart=0, tend=240, batch_size=8, )
-    dtrain, dtest = dset.split()
-    del dset
+    if prep:
+        dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
+                             tstart=0, tend=240, batch_size=8, width=8, prep=True)
+    else:
+        accuracy = {}
+        precision = {}
+        recall = {}
+        f1 = {}
+        batch_size=16
+        performance_metrics = {'accuracy': accuracy,
+                               'precision': precision,
+                               'recall': recall,
+                               'f1': f1}
 
-    for i in range(64):
-        dtrain.select_channel(i)
-        dtest.select_channel(i)
+        dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
+                            tstart=0, tend=240, batch_size=8, )
 
-        #node_wise_classification(dtrain,dtest,i,accuracy,precision,recall,f1)
+        """dtrain, dtest = dset.split()
+        del dset
 
-    with open("performance.txt", 'w') as f:
-        json.dump(performance_metrics, f, indent=4)
+        for i in range(64):
+            dtrain.select_channel(i)
+            dtest.select_channel(i)
 
+            #node_wise_classification(dtrain,dtest,i,accuracy,precision,recall,f1)
+
+        with open("performance.txt", 'w') as f:
+            json.dump(performance_metrics, f, indent=4)
+
+"""
