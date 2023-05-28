@@ -41,7 +41,7 @@ class ConvTimeAttention(nn.Module):
 # Instantiate the model
 
 class ConvTimeAttentionV2(nn.Module):
-    def __init__(self, num_channels, num_classes):
+    def __init__(self, num_channels, num_classes, ff_layers = 1):
         super().__init__()
         self.conv1 = nn.Conv1d(num_channels, 32, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm1d(32)
@@ -55,7 +55,12 @@ class ConvTimeAttentionV2(nn.Module):
         self.bn3 = nn.BatchNorm1d(128)
         self.dropout3 = nn.Dropout(0.5)
         self.attention3 = Attention(128)
-        self.fc = nn.Linear(128, num_classes)
+        end_layer = 128
+        self.fc = nn.ModuleList()
+        for i in range(ff_layers):
+            print(end_layer * (2**i))
+            self.fc.append(nn.Linear(end_layer * (2**i), end_layer * (2**(i+1) if  i < ff_layers-1 else num_classes)))
+        #self.fc = nn.Linear
 
     def forward(self, x):
         x = self.dropout1(F.relu(self.bn1(self.conv1(x))))
@@ -66,5 +71,55 @@ class ConvTimeAttentionV2(nn.Module):
         x = self.attention3(x)
         x = F.avg_pool1d(x, x.shape[2])
         x = x.view(x.shape[0], -1)
-        x = self.fc(x)
-        return F.softmax(x, dim=1)
+        for i, ff in enumerate(self.fc):
+            if i < len(self.fc) - 1:  # If not the last layer, apply relu activation
+                x = F.relu(ff(x))
+            else:  # If the last layer, apply softmax activation
+                x = ff(x)
+        return x
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class TemporalBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, dilation, padding):
+        super(TemporalBlock, self).__init__()
+        self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size,
+                               stride=stride, padding=padding, dilation=dilation)
+        self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size,
+                               stride=stride, padding=padding, dilation=dilation)
+        self.downsample = nn.Conv1d(in_channels, out_channels, 1) if in_channels != out_channels else None
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        residual = x
+        out = self.relu(self.conv1(x))
+        out = self.conv2(out)
+        if self.downsample is not None:
+            residual = self.downsample(x)
+        out += residual
+        out = self.relu(out)
+        return out
+
+
+class TemporalConvNet(nn.Module):
+    def __init__(self, num_inputs, num_channels, kernel_size=2, dropout=0.2):
+        super(TemporalConvNet, self).__init__()
+        layers = []
+        num_levels = len(num_channels)
+        for i in range(num_levels):
+            dilation_size = 2 ** i
+            in_channels = num_inputs if i == 0 else num_channels[i-1]
+            out_channels = num_channels[i]
+            layers += [TemporalBlock(in_channels, out_channels, kernel_size, stride=1, dilation=dilation_size,
+                                     padding=(kernel_size-1) * dilation_size)]
+
+            layers += [nn.Dropout(dropout)]
+
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.network(x)
+

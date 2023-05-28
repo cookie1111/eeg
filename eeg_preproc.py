@@ -231,8 +231,9 @@ class EEGNpDataset(Dataset):
     def __init__(self, root_dir: str, participants: str, id_column: str = "participant_id", tstart: int = 0,
                  tend: int = 30, special_part: str = None, medicated: int = 1,
                  batch_size: int = 16, use_index = None, duration: float = 1, overlap: float = 0.9, name: str = "",
-                 stack_rgb = True, transform = lambda x:x, trans_args = (), freq = 500, debug = False):
+                 stack_rgb = True, transform = lambda x:x, trans_args = (), freq = 500, debug = False, disk = False, epoched = False):
         self.name = name
+        self.disk = disk
         self.freq = freq
         self.debug = debug
         self.overlap = overlap
@@ -247,6 +248,7 @@ class EEGNpDataset(Dataset):
         self.medicated = medicated
         self.ids = id_column
         self.subjects = pd.read_table(os.path.join(root_dir, participants))
+        self.epoched = epoched
         # for using a custom index
         if use_index is not None:
             self.subjects = self.subjects.iloc[use_index]
@@ -330,7 +332,7 @@ class EEGNpDataset(Dataset):
                     if os.path.isfile(save_dest):
                         if self.debug:
                             print(f"DEBUG: {save_dest} already exists so no need to load it")
-                        arr = np.load(save_dest)
+                        arr = np.load(save_dest, mmap_mode='r' if self.disk else None)
                     else:
                         if self.debug:
                             print(f"DEBUG: {save_dest} does not yet exist so filtering and cutting from scratch")
@@ -383,16 +385,19 @@ class EEGNpDataset(Dataset):
         print(self.subjects)
 
     def calc_samples(self, arr):
-        whole = arr.shape[1]
-        duration = self.duration*self.freq
-        overlap = self.overlap*self.freq
-        ret = int(np.floor((whole - duration) / (duration - overlap)))
-        if self.debug:
-            print(f"DEBUG: calculating number of samples in the recording")
-            print(f"duration_of_sample = {duration}")
-            print(f"overlap between consecutive samples = {overlap}")
-            print(f"number of samples = {ret}")
-        return ret
+        if self.epoched:
+            return arr.shape[0]
+        else:
+            whole = arr.shape[1]
+            duration = self.duration * self.freq
+            overlap = self.overlap * self.freq
+            ret = int(np.floor((whole - duration) / (duration - overlap)))
+            if self.debug:
+                print(f"DEBUG: calculating number of samples in the recording")
+                print(f"duration_of_sample = {duration}")
+                print(f"overlap between consecutive samples = {overlap}")
+                print(f"number of samples = {ret}")
+            return ret
 
     def __getitem__(self, idx: int):
         if self.debug:
@@ -413,14 +418,24 @@ class EEGNpDataset(Dataset):
             sys.exit(1)
         if self.ch == -1:
             if self.debug:
-                print(f"DEBUG: using all channels and running transformation on top of them")
-            return self.transform(self.epochs_list[idx_subject][:, idx_inner:(idx_inner+duration)],
-                                  *self.trans_args), self.y_list[idx_subject]
+                print(f"DEBUG: using all channels and running transformation on top of them, with {'preepoched' if self.epcohed else 'nonepoched'} data")
+            if self.epoched:
+                #print(self.epochs_list[idx_subject].shape)
+                return self.transform(self.epochs_list[idx_subject][idx_inner,:,:],
+                                      *self.trans_args), self.y_list[idx_subject]
+            else:
+                return self.transform(self.epochs_list[idx_subject][:, idx_inner:(idx_inner + duration)],
+                                      *self.trans_args), self.y_list[idx_subject]
         else:
             if self.debug:
-                print(f"DEBUG: running on channel {self.ch} and applying transformation")
-            return self.transform(np.expand_dims(self.epochs_list[idx_subject][self.ch, idx_inner:(idx_inner+duration)],axis=0),
-                                  *self.trans_args), self.y_list[idx_subject]
+                print(f"DEBUG: running on channel {self.ch} and applying transformation, with {'preepoched' if self.epcohed else 'nonepoched'} data")
+            if self.epoched:
+                return self.transform(np.expand_dims(self.epochs_list[idx_subject][idx_inner, self.ch, :], axis=0),
+                                      *self.trans_args), self.y_list[idx_subject]
+            else:
+                return self.transform(
+                    np.expand_dims(self.epochs_list[idx_subject][self.ch, idx_inner:(idx_inner + duration)], axis=0),
+                    *self.trans_args), self.y_list[idx_subject]
 
     def __len__(self):
         suma = sum(self.data_points)
@@ -429,11 +444,14 @@ class EEGNpDataset(Dataset):
     def convert_to_idx(self, index):
         suma = 0
         idx = 0
+        step = 1
         if index >= len(self):
             raise IndexError
-        duration = self.duration * self.freq
-        overlap = self.overlap * self.freq
-        step = duration - overlap
+        if not self.epoched:
+            duration = self.duration * self.freq
+            overlap = self.overlap * self.freq
+            step = duration - overlap
+
         for i in self.data_points:
             if suma + i>index:
                 cur = index-suma
@@ -469,10 +487,10 @@ class EEGNpDataset(Dataset):
 
             return (EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                                  self.medicated, self.batch_size, use_index=bottom, transform=self.transform, trans_args=self.trans_args,
-                                 overlap=self.overlap, duration=self.duration, debug=False),
+                                 overlap=self.overlap, duration=self.duration, debug=False, disk=self.disk, epoched=self.epoched, name=self.name),
                     EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                                  self.medicated, self.batch_size, use_index=top,transform=self.transform, trans_args=self.trans_args,
-                                 overlap=self.overlap, duration=self.duration, debug=False))
+                                 overlap=self.overlap, duration=self.duration, debug=False, disk=self.disk, epoched=self.epoched, name=self.name))
         else:
             assert isinstance(ratios, tuple)
             splits = []
@@ -491,7 +509,7 @@ class EEGNpDataset(Dataset):
                     bottom = shuffled_idxes[prev_idx: idx]
                 splits.append(
                     EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
-                    self.medicated, self.batch_size, use_index=bottom))
+                    self.medicated, self.batch_size, use_index=bottom, disk=self.disk, epoched=self.epoched, name=self.name))
                 if balance_classes:
                     prev_idx1 = ce1
                     prev_idx0 = ce0
@@ -506,7 +524,7 @@ class EEGNpDataset(Dataset):
             splits.append(
                 EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                            self.medicated, self.batch_size,
-                           use_index=bottom))
+                           use_index=bottom, disk=self.disk, epoched=self.epoched))
             return splits
 
     def info(self):
