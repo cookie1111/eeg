@@ -262,6 +262,20 @@ class EEGNpDataset(Dataset):
         self.trans_args = trans_args
         self.ch = -1
 
+
+    def transfer_to_gpu(self, device):
+        """
+        Copy the cwt_cache to the specified device.
+        """
+        self.holder = [torch.tensor(epoch).to(device) for epoch in self.epochs_list]
+        self.epochs_list, self.holder = self.holder, self.epochs_list
+
+
+    def delete_from_gpu(self, device):
+        self.epochs_list = self.holder
+        self.holder = []
+        torch.cuda.empty_cache()
+
     def change_mode(self, ch=-1):
         # ch being -1 means return all in get_item
         if self.debug:

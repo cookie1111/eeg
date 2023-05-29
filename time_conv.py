@@ -79,9 +79,6 @@ class ConvTimeAttentionV2(nn.Module):
         return x
 
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 class TemporalBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, dilation, padding):
@@ -96,16 +93,17 @@ class TemporalBlock(nn.Module):
     def forward(self, x):
         residual = x
         out = self.relu(self.conv1(x))
-        out = self.conv2(out)
+        out = self.conv2(out)[:,:,:residual.shape[2]]
         if self.downsample is not None:
             residual = self.downsample(x)
+        #print(residual.shape, out.shape)
         out += residual
         out = self.relu(out)
         return out
 
 
 class TemporalConvNet(nn.Module):
-    def __init__(self, num_inputs, num_channels, kernel_size=2, dropout=0.2):
+    def __init__(self, num_inputs, num_channels, kernel_size=3, dropout=0.2):
         super(TemporalConvNet, self).__init__()
         layers = []
         num_levels = len(num_channels)
@@ -113,13 +111,33 @@ class TemporalConvNet(nn.Module):
             dilation_size = 2 ** i
             in_channels = num_inputs if i == 0 else num_channels[i-1]
             out_channels = num_channels[i]
+            #print(f"Level:{i}, dilation:{dilation_size}, kernel:{kernel_size}, padding:{(kernel_size-1) * dilation_size}")
             layers += [TemporalBlock(in_channels, out_channels, kernel_size, stride=1, dilation=dilation_size,
                                      padding=(kernel_size-1) * dilation_size)]
 
             layers += [nn.Dropout(dropout)]
 
+
         self.network = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.network(x)
+
+
+class TCNClassifier(nn.Module):
+    def __init__(self, num_inputs, num_channels, num_classes, num_ff, kernel_size=2, dropout=0.2):
+        super(TCNClassifier, self).__init__()
+        self.tcn = TemporalConvNet(num_inputs, num_channels, kernel_size, dropout)
+        self.linears = nn.ModuleList([nn.Linear(num_channels[-1]*(2**i) ,
+                                                num_channels[-1]*(2**(i+1) if i == (num_ff-1) else num_classes)) for i in range(num_ff)])  # list of linear layers
+
+    def forward(self, x):
+        # pass input through TCN layers
+        x = self.tcn(x)
+        # take the last value from the output sequence from the TCN
+        x = x[:, :, -1]
+        # pass through each fully connected layer with ReLU activation
+        for i, linear in enumerate(self.linears):
+            x = F.relu(linear(x)) if i != len(self.linears) - 1 else linear(x)  # apply ReLU only for non-last layers
+        return x
 
