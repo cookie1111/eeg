@@ -1,4 +1,5 @@
 import random
+import matplotlib.pyplot as plt
 
 import numpy as np
 import torch
@@ -12,6 +13,7 @@ from time import sleep
 from eeg_preproc import EEGNpDataset as EEGDataset, reshaper, transform_to_cwt, resizer
 from alternative_ds import EEGCwtDataset
 from time_conv import ConvTimeAttention, ConvTimeAttentionV2, TCNClassifier
+
 
 
 def add_dim(matrix):
@@ -145,8 +147,40 @@ def save_checkpoint(model, optimizer, epoch, checkpoint_path):
 
 
 def main():
-    CHANNEL_WISE = 5
+    CHANNEL_WISE = 4
     random.seed(42)
+    TEST = True
+    if TEST:
+        ff_layers = 1
+        dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
+             tstart=0, tend=240, batch_size=16, width=8, disk=True, epoched=False, prep=True,
+             debug=False)
+
+        # a = dset.split(ratios=(0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04),shuffle=True)
+        a = dset.split(ratios=(0.3, 0.3,0.2), shuffle=True)
+        for i in a:
+                i.select_channel(-1)
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        num_classes = 2  # Replace with the number of classes you have
+        model = ConvTimeAttentionV2(num_channels=512, num_classes=2, ff_layers=ff_layers).to(device)
+        # model = CoherenceClassifier(num_classes, 63, 500).to(device)
+        model = model.double()
+        criterion = nn.CrossEntropyLoss()
+
+        # Load the model from a saved checkpoint
+        checkpoint_path = "/home/sebastjan/Documents/eeg/best_model_basic_TESTER_v2_att_cwt_split_0839_000001_001.pth"
+        model.load_state_dict(torch.load(checkpoint_path))
+
+        # Transfer test dataset to GPU
+        a[-1].transfer_to_gpu(device)
+        test_loader = torch.utils.data.DataLoader(a[-1], batch_size=16, shuffle=False)
+        test_loss, test_accuracy = test(model, device, test_loader, criterion)
+        a[-1].delete_from_gpu(device)
+
+        print(f'Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy * 100:.2f}%')
+
 
     if CHANNEL_WISE == 1:
         dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
@@ -292,18 +326,22 @@ def main():
                 save_checkpoint(model, optimizer, epoch, f'checkpoint_epoch_{epoch}.pth')
     elif CHANNEL_WISE == 4:
         dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
-                             tstart=0, tend=240, batch_size=64, width=8, disk=True, epoched=False, prep=True,
+                             tstart=0, tend=240, batch_size=16, width=8, disk=True, epoched=False, prep=True,
                              debug=False)
         # a = dset.split(ratios=(0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04),shuffle=True)
-        a = dset.split(ratios=(0.4, 0.4), shuffle=True)
+        a = dset.split(ratios=(0.3, 0.3,0.2), shuffle=True)
         for i in a:
             i.select_channel(-1)
 
         # a.delete_from_gpu('cuda')
         # Hyperparameters
-        num_epochs = 100
+        num_epochs = 200
         batch_size = 16
         learning_rate = 0.00001
+        ff_layers = 1
+        print(str(learning_rate))
+        loss_values= []
+        accuracy_values = []
 
         # train_loader =
         # val_loader = torch.utils.data.DataLoader(dtest, batch_size=batch_size, shuffle=False, num_workers=4)
@@ -311,7 +349,114 @@ def main():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         num_classes = 2  # Replace with the number of classes you have
-        model = ConvTimeAttentionV2(num_channels=512, num_classes=2, ff_layers=3).to(device)
+        model = ConvTimeAttentionV2(num_channels=512, num_classes=2, ff_layers=ff_layers).to(device)
+        # model = CoherenceClassifier(num_classes, 63, 500).to(device)
+        model = model.double()
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.01)
+        criterion = nn.CrossEntropyLoss()
+        scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[60],gamma=0.1)
+
+        best_val_accuracy = 0.0
+        model_save_path = f"best_model_basic_TESTER_v2_att_cwt_split.pth"
+        rng = list(range(len(a) - 1))
+        for epoch in range(1, num_epochs + 1):
+            random.shuffle(rng)
+            for i in rng:
+                a[i].transfer_to_gpu(device)
+                train_loader = torch.utils.data.DataLoader(a[i], batch_size=batch_size, shuffle=True)
+                train(model, device, train_loader, optimizer, criterion, epoch)
+                a[i].delete_from_gpu(device)
+
+            # a[-1]
+            a[-1].transfer_to_gpu(device)
+            val_loader = torch.utils.data.DataLoader(a[-1], batch_size=batch_size, shuffle=False)
+            val_loss, val_accuracy = test(model, device, val_loader, criterion)
+            a[-1].delete_from_gpu(device)
+            loss_values.append(val_loss)
+            accuracy_values.append(val_accuracy)
+
+            if val_accuracy > best_val_accuracy:
+                best_val_accuracy = val_accuracy
+                model_save_path = f"best_model_cwt_3cnn_attention_{ff_layers}ff_"
+                model_save_path = model_save_path + f"0{str(best_val_accuracy).split('.')[-1]}_"
+                model_save_path = model_save_path + f"0{str(learning_rate).split('.')[-1]}_"
+                model_save_path = model_save_path + f"epoch{epoch}.pth"
+                torch.save(model.state_dict(), model_save_path)
+                print(f"Model saved at {model_save_path}")
+            checkpoint_interval = 5
+            if epoch % checkpoint_interval == 0:
+                save_checkpoint(model, optimizer, epoch, f'checkpoint_epoch_{epoch}.pth')
+            scheduler.step()
+
+    elif CHANNEL_WISE == 5:
+        num_epochs = 50
+        batch_size = 64
+        learning_rate = 0.00001
+        num_channels = [128,] #[128,64,32,16]#[128, 256,]# 512]
+        ff_layers = 3
+        num_classes = 2
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        dset = EEGDataset("ds003490-download", participants="participants.tsv",
+                          tstart=0, tend=240, batch_size=16,) #name="_TESTER_clean",disk=True ,epoched=True)
+        dtrain0, dtest = dset.split(ratios=0.8, shuffle=True)
+        num_classes = 2
+        train_loader0 = torch.utils.data.DataLoader(dtrain0, batch_size=batch_size, shuffle=True)
+        #train_loader1 = torch.utils.data.DataLoader(dtrain1, batch_size=batch_size, shuffle=True)
+        val_loader = torch.utils.data.DataLoader(dtest, batch_size=batch_size, shuffle=False)
+        dtrain0.transfer_to_gpu(device)
+        dtest.transfer_to_gpu(device)
+
+
+        #print(len(dtrain0), len(dtrain1), len(dtest), len(dset))
+
+        model = TCNClassifier(num_inputs=64, num_channels=num_channels, num_classes=num_classes, num_ff=ff_layers, kernel_size=5,dropout=0, batch_norm=False, attention=True).to(device)
+        model = model.double()
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
+        criterion = nn.CrossEntropyLoss()
+
+        best_val_accuracy = 0.0
+        model_save_path = f"best_model_basic_TESTER_v2_resnet1d.pth"
+
+        for epoch in range(1, num_epochs + 1):
+            #dtrain0.transfer_to_gpu(device)
+            train(model, device, train_loader0, optimizer, criterion, epoch)
+            #dtrain0.delete_from_gpu(device)
+            #dtrain1.transfer_to_gpu(device)
+            #train(model, device, train_loader1, optimizer, criterion, epoch)
+            #dtrain1.delete_from_gpu(device)
+            #dtest.transfer_to_gpu(device)
+            val_loss, val_accuracy = test(model, device, val_loader, criterion)
+            #dtest.delete_from_gpu(device)
+
+            if val_accuracy > best_val_accuracy:
+                best_val_accuracy = val_accuracy
+                torch.save(model.state_dict(),
+                           f"best_model_basic_TESTER_v2_resnet1d_0{str(best_val_accuracy).split('.')[-1]}_0{str(learning_rate).split('.')[-1]}_{str(len(num_channels))}_{str(ff_layers)}.pth")
+                print(f"Model saved at {model_save_path}")
+            checkpoint_interval = 5
+            if epoch % checkpoint_interval == 0:
+                save_checkpoint(model, optimizer, epoch, f'checkpoint_epoch_{epoch}.pth')
+
+    elif CHANNEL_WISE == 6:
+        dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
+                             tstart=0, tend=240, batch_size=16, width=8, disk=True, epoched=False, prep=True,
+                             debug=False)
+        num_epochs = 100
+        batch_size = 16
+        learning_rate = 0.000001
+        ff_layers = 1
+        print(str(learning_rate))
+
+        a = dset.split(ratios=(0.3, 0.3,0.2), shuffle=True)
+        for i in a:
+            i.select_channel(-1)
+
+        use_index = None
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        num_classes = 2  # Replace with the number of classes you have
+        model = ConvTimeAttentionV2(num_channels=512, num_classes=2, ff_layers=ff_layers).to(device)
         # model = CoherenceClassifier(num_classes, 63, 500).to(device)
         model = model.double()
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.01)
@@ -336,50 +481,21 @@ def main():
 
             if val_accuracy > best_val_accuracy:
                 best_val_accuracy = val_accuracy
+                model_save_path = f"best_model_cwt_3cnn_attention_{ff_layers}ff_"
+                model_save_path = model_save_path + f"0{str(best_val_accuracy).split('.')[-1]}_"
+                model_save_path = model_save_path + f"0{str(learning_rate).split('.')[-1]}_"
+                model_save_path = model_save_path + f"epoch{epoch}.pth"
                 torch.save(model.state_dict(), model_save_path)
                 print(f"Model saved at {model_save_path}")
             checkpoint_interval = 5
             if epoch % checkpoint_interval == 0:
                 save_checkpoint(model, optimizer, epoch, f'checkpoint_epoch_{epoch}.pth')
-
-    elif CHANNEL_WISE == 5:
-        num_epochs = 100
-        batch_size = 16
-        learning_rate = 0.0001
-        num_channels = [128, 256, 512]
-        ff_layers = 1
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        dset = EEGDataset("ds003490-download", participants="participants.tsv",
-                          tstart=0, tend=240, batch_size=16, name="_TESTER_clean", )
-        dtrain, dtest = dset.split(ratios=0.8, shuffle=True)
-        dtrain.transfer_to_gpu(device)
-        dtest.transfer_to_gpu(device)
-        train_loader = torch.utils.data.DataLoader(dtrain, batch_size=batch_size, shuffle=True)
-        val_loader = torch.utils.data.DataLoader(dtest, batch_size=batch_size, shuffle=False)
-
-        num_classes = 2  # Replace with the number of classes you have
-        model = TCNClassifier(num_inputs=63, num_channels=num_channels, num_classes=2, num_ff=ff_layers).to(device)
-        model = model.double()
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.01)
-        criterion = nn.CrossEntropyLoss()
-
-        best_val_accuracy = 0.0
-        model_save_path = f"best_model_basic_TESTER_v2_resnet1d.pth"
-
-        for epoch in range(1, num_epochs + 1):
-            train(model, device, train_loader, optimizer, criterion, epoch)
-            val_loss, val_accuracy = test(model, device, val_loader, criterion)
-
-            if val_accuracy > best_val_accuracy:
-                best_val_accuracy = val_accuracy
-                torch.save(model.state_dict(),
-                           f"best_model_basic_TESTER_v2_resnet1d_0{str(best_val_accuracy).split('.')[1]}_0{str(learning_rate).split('.')[1]}_{str(len(num_channels))}_{str(ff_layers)}.pth")
-                print(f"Model saved at {model_save_path}")
-            checkpoint_interval = 5
-            if epoch % checkpoint_interval == 0:
-                save_checkpoint(model, optimizer, epoch, f'checkpoint_epoch_{epoch}.pth')
-
+    plt.figure()
+    plt.plot(range(1,num_epochs+1), loss_values)
+    plt.title('Loss over time')
+    plt.xlabel('Epcohs')
+    plt.ylabel('Loss')
+    plt.show()
 
 if __name__ == "__main__":
     main()

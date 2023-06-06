@@ -484,7 +484,7 @@ if __name__ == "__main__":
 
     if prep:
         dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
-                             tstart=0, tend=240, batch_size=8, width=8, prep=True)
+                             tstart=0, tend=240, batch_size=8, width=8, prep=True,disk=True)
     else:
         accuracy = {}
         precision = {}
@@ -497,7 +497,7 @@ if __name__ == "__main__":
                                'f1': f1}
 
         dset = EEGCwtDataset("ds003490-download", participants="participants.tsv",
-                            tstart=0, tend=240, batch_size=8, )
+                            tstart=0, tend=240, batch_size=8, epoched = True, disk=True)
 
         """dtrain, dtest = dset.split()
         del dset

@@ -515,20 +515,20 @@ class EEGNpDataset(Dataset):
                 prev_idx = 0
             for ratio in ratios:
                 if balance_classes:
-                    ce1 = ceil(len(c1)*ratios)
-                    ce0 = ceil(len(c0)*ratios)
-                    bottom = c1[prev_idx1:ce1]+c0[prev_idx0:ce0]
+                    ce1 = ceil(len(c1)*ratio)
+                    ce0 = ceil(len(c0)*ratio)
+                    bottom = c1[prev_idx1:prev_idx1+ce1]+c0[prev_idx0:prev_idx0+ce0]
                 else:
                     idx = ceil(len(self.y_list) * ratio)
-                    bottom = shuffled_idxes[prev_idx: idx]
+                    bottom = shuffled_idxes[prev_idx: iprev_idx + idx]
                 splits.append(
                     EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                     self.medicated, self.batch_size, use_index=bottom, disk=self.disk, epoched=self.epoched, name=self.name))
                 if balance_classes:
-                    prev_idx1 = ce1
-                    prev_idx0 = ce0
+                    prev_idx1 = prev_idx1 + ce1
+                    prev_idx0 = prev_idx0 + ce0
                 else:
-                    prev_idx = idx
+                    prev_idx = prev_idx + idx
 
             if balance_classes:
                 bottom = c1[prev_idx1:]+c0[prev_idx0:]
@@ -538,7 +538,7 @@ class EEGNpDataset(Dataset):
             splits.append(
                 EEGNpDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
                            self.medicated, self.batch_size,
-                           use_index=bottom, disk=self.disk, epoched=self.epoched))
+                           use_index=bottom, disk=self.disk, epoched=self.epoched, name=self.name))
             return splits
 
     def info(self):
