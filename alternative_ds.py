@@ -64,7 +64,43 @@ class EEGCwtDataset(EEGNpDataset):
         gc.collect()
         #self.load_data()
         print(f"len here : {len(self.epochs_list)}")
-        if channel == -1:
+        print(channel)
+        print(channel is tuple)
+        #print(-1 not in channel)
+        if type(channel) is tuple and -1 not in channel:
+            print("we in")
+            self.cwt_cache = [None] * (self.cache_len if not self.disk else  len(self.epochs_list))
+            self.ch = channel
+            self.dim1 = 512
+            #CALCULATE HOW MANY CHANNELS AND THE WIDTHS PER CHANNEL(SIZE OF SPECTROGRAM)
+            while True:
+                if self.dim1/len(self.ch)%1 == 0:
+                    break
+                else:
+                    self.dim1 = self.dim1 + 1
+            width_len = self.dim1/len(self.ch)
+            self.widths = np.linspace(1,30, num=int(width_len))
+            index = 0
+            print(len(self.epochs_list), len(self.subjects))
+            while self.epochs_list:
+                print(index)
+                epoch = self.epochs_list.pop(0)  # Remove and return the first element
+
+
+                if not os.path.isfile(os.path.join(f"cwts", f"{self.cwt_file_name}_w{len(self.widths)}_{self.subjects.iloc[index].participant_id}_{'c'.join(map(str, self.ch))}.npy")):
+                    print(f"{self.cwt_file_name}_w{len(self.widths)}_{self.subjects.iloc[index].participant_id}_{'c'.join(map(str, self.ch))}.npy")
+                    hold_me = [np.real(self.apply_cwt(epoch, c)) for c in self.ch]
+                    hold_me = np.concatenate(hold_me, axis = 0)
+                    np.save(os.path.join(f"cwts", f"{self.cwt_file_name}_w{len(self.widths)}_{self.subjects.iloc[index].participant_id}_{'c'.join(map(str, self.ch))}.npy"), hold_me)
+
+                if self.disk:
+                    self.cwt_cache[index] = np.real(np.load(os.path.join(f"cwts", f"{self.cwt_file_name}_w{len(self.widths)}_{self.subjects.iloc[index].participant_id}_{'c'.join(map(str, self.ch))}.npy"), mmap_mode='r'))
+                    self.cur_cache_subjects.append(extract_number(self.subjects.iloc[index].participant_id))
+                elif len(self.cur_cache_subjects) < self.cache_len:
+                    self.cur_cache_subjects.append(extract_number(self.subjects.iloc[index].participant_id))
+                    self.cwt_cache[index] = np.load(os.path.join(f"cwts", f"{self.cwt_file_name}_w{len(self.widths)}_{self.subjects.iloc[index].participant_id}_{'c'.join(map(str, self.ch))}.npy"))
+                index += 1
+        elif channel == -1:
             self.cwt_cache = [None] * (self.cache_len if not self.disk else  len(self.epochs_list))
             self.ch = channel
             index = 0
@@ -295,7 +331,7 @@ class EEGCwtDataset(EEGNpDataset):
             else:
                 if os.path.isfile(save_dest):
                     debug_print(f"{save_dest} already exists so no need to load it")
-                    arr = np.load(save_dest, mmap_mode=self.disk)
+                    arr = np.load(save_dest, mmap_mode='r' if self.disk else None)
                 else:
                     debug_print(f"{cwt_save_dest} does not yet exist so filtering, cutting and transforming from scratch")
                     raw = mne.io.read_raw_eeglab(eeg_file, preload=True).filter(1, 30).crop(tmin=self.tstart,
@@ -334,7 +370,8 @@ class EEGCwtDataset(EEGNpDataset):
         print(f"We did sth: {len(self.y_list)}")
 
     # Other methods remain unchanged
-    def split(self, ratios=0.8, shuffle=False, balance_classes=True):
+    def split(self, ratios=0.8, shuffle=False, balance_classes=True, fractions=False):
+
         if balance_classes:
             # need to know how much one and the other list have
             c1 = [idx for idx, c in enumerate(self.y_list) if c == 1]
@@ -346,7 +383,14 @@ class EEGCwtDataset(EEGNpDataset):
             shuffled_idxes = list(range(len(self.y_list)))
             if shuffle:
                 random.shuffle(shuffled_idxes)
-
+        if fractions:
+            print(self.y_list)
+            return [EEGCwtDataset(self.root_dir, self.participants, self.ids, self.tstart, self.tend, self.special_part,
+                          self.medicated, self.batch_size, use_index=[i], transform=self.transform,
+                          trans_args=self.trans_args,
+                          overlap=self.overlap, duration=self.duration, debug=self.debug, width=len(self.widths),
+                          cache_len=self.cache_len, disk=self.disk, name=self.name, epoched=self.epoched,
+                          prep=self.prep) for i in self.use_index]
         if ratios is None:
             return self
         elif isinstance(ratios, float) or len(ratios) == 1:

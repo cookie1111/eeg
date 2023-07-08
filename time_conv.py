@@ -23,50 +23,58 @@ class Attention(nn.Module):
         return weights * (x.transpose(1, 2) if self.tr else x)
 
 class ConvTimeAttention(nn.Module):
-    def __init__(self, num_channels, num_classes):
+    def __init__(self, num_channels, num_classes, dropout=0.5):
         super().__init__()
         self.conv1 = nn.Conv1d(num_channels, 32, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(32)
+        self.dropout1 = nn.Dropout(dropout)
         self.attention1 = Attention(32)
         self.conv2 = nn.Conv1d(32, 64, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm1d(64)
+        self.dropout2 = nn.Dropout(dropout)
         self.attention2 = Attention(64)
-        self.fc = nn.Linear(64, num_classes)
+        self.fc = nn.Linear(64*500, 1024) #1024
+        self.fc2 = nn.Linear(1024, num_classes)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = self.dropout1(F.relu(self.bn1(self.conv1(x))))
         x = self.attention1(x)
-        x = F.relu(self.conv2(x))
+        x = self.dropout2(F.relu(self.bn2(self.conv2(x))))
         x = self.attention2(x)
-        x = F.avg_pool1d(x, x.shape[2])
+        #x = F.avg_pool1d(x, x.shape[2])
+        #print(x.shape)
         x = x.view(x.shape[0], -1)
-        x = self.fc(x)
-        return F.softmax(x, dim=1)
+        x = F.relu(self.fc(x))
+        x = self.fc2(x)
+        return x
 
 # Instantiate the model
 
-class ConvTimeAttentionV2(nn.Module):
-    def __init__(self, num_channels, num_classes, expansion=1, kernel_sizes=[3,3,3,3], ff_layers = 1):
+
+class ConvTimeAttentionV3(nn.Module):
+    def __init__(self, num_channels, num_classes, expansion=1, kernel_sizes=[3,3,3,3], ff_layers = 1, dropout = 0.7):
         super().__init__()
         self.conv1 = nn.Conv1d(num_channels, 32*expansion, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm1d(32*expansion)
-        self.dropout1 = nn.Dropout(0.5)
+        self.dropout1 = nn.Dropout(dropout)
         self.attention1 = Attention(32*expansion)
         self.conv2 = nn.Conv1d(32*expansion, 64*expansion, kernel_size=3, padding=1)
         self.bn2 = nn.BatchNorm1d(64*expansion)
-        self.dropout2 = nn.Dropout(0.5)
+        self.dropout2 = nn.Dropout(dropout)
         self.attention2 = Attention(64*expansion)
         self.conv3 = nn.Conv1d(64*expansion, 128*expansion, kernel_size=3, padding=1)
         self.bn3 = nn.BatchNorm1d(128*expansion)
-        self.dropout3 = nn.Dropout(0.5)
+        self.dropout3 = nn.Dropout(dropout)
         self.attention3 = Attention(128*expansion)
         #self.conv4 = nn.Conv1d(128*expansion, 256*expansion, kernel_size=3, padding=1)
         #self.bn4 = nn.BatchNorm1d(256*expansion)
-        #self.dropout4 = nn.Dropout(0.5)
+        #self.dropout4 = nn.Dropout(dropout)
         #self.attention4 = Attention(256*expansion)
         end_layer = 128*expansion
         self.fc = nn.ModuleList()
         for i in range(ff_layers):
             print(end_layer * (2**i))
-            self.fc.append(nn.Linear(end_layer * (2**i), end_layer * (2**(i+1) if  i < ff_layers-1 else num_classes)))
+            self.fc.append(nn.Linear(end_layer * (2**i), (end_layer * 2**(i+1)) if  i != ff_layers-1 else num_classes))
         #self.fc = nn.Linear
 
     def forward(self, x):
@@ -79,6 +87,103 @@ class ConvTimeAttentionV2(nn.Module):
         #x = self.dropout4(F.relu(self.bn4(self.conv4(x))))
         #x = self.attention4(x)
         x = F.avg_pool1d(x, x.shape[2])
+        x = x.view(x.shape[0], -1)
+        for i, ff in enumerate(self.fc):
+            if i < len(self.fc) - 1:  # If not the last layer, apply relu activation
+                x = F.relu(ff(x))
+            else:  # If the last layer, apply softmax activation
+                x = ff(x)
+        return x
+
+
+
+
+class ConvTimeAttentionV2(nn.Module):
+    def __init__(self, num_channels, num_classes, expansion=1, kernel_sizes=[3,3,3,3], ff_layers = 1, dropout = 0.7):
+        super().__init__()
+        self.conv1 = nn.Conv1d(num_channels, 32*expansion, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(32*expansion)
+        self.dropout1 = nn.Dropout(dropout)
+        self.attention1 = Attention(32*expansion)
+        self.conv2 = nn.Conv1d(32*expansion, 64*expansion, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm1d(64*expansion)
+        self.dropout2 = nn.Dropout(dropout)
+        self.attention2 = Attention(64*expansion)
+        self.conv3 = nn.Conv1d(64*expansion, 128*expansion, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm1d(128*expansion)
+        self.dropout3 = nn.Dropout(dropout)
+        self.attention3 = Attention(128*expansion)
+        #self.conv4 = nn.Conv1d(128*expansion, 256*expansion, kernel_size=3, padding=1)
+        #self.bn4 = nn.BatchNorm1d(256*expansion)
+        #self.dropout4 = nn.Dropout(dropout)
+        #self.attention4 = Attention(256*expansion)
+        end_layer = 128*expansion
+        self.fc = nn.ModuleList()
+        for i in range(ff_layers):
+            print(end_layer * (2**i))
+            self.fc.append(nn.Linear(end_layer * (2**i), end_layer * (2**(i+1) if  i != ff_layers-1 else num_classes)))
+        #self.fc = nn.Linear
+
+    def forward(self, x):
+        x = self.dropout1(F.relu(self.bn1(self.conv1(x))))
+        x = self.attention1(x)
+        x = self.dropout2(F.relu(self.bn2(self.conv2(x))))
+        x = self.attention2(x)
+        x = self.dropout3(F.relu(self.bn3(self.conv3(x))))
+        x = self.attention3(x)
+        #x = self.dropout4(F.relu(self.bn4(self.conv4(x))))
+        #x = self.attention4(x)
+        x = F.avg_pool1d(x, x.shape[2])
+        x = x.view(x.shape[0], -1)
+        for i, ff in enumerate(self.fc):
+            if i < len(self.fc) - 1:  # If not the last layer, apply relu activation
+                x = F.relu(ff(x))
+            else:  # If the last layer, apply softmax activation
+                x = ff(x)
+        return x
+
+
+class ConvTimeAttentionReduction(nn.Module):
+    def __init__(self, num_channels, num_classes, expansion=1, kernel_sizes=[3,3,3,3], ff_layers = 1, dropout = 0.5):
+        super().__init__()
+        self.conv1 = nn.Conv1d(num_channels, 128 , kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(128)
+        self.dropout1 = nn.Dropout(dropout)
+        self.attention1 = Attention(128 )
+        self.conv2 = nn.Conv1d(128 , 64 , kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm1d(64 )
+        self.dropout2 = nn.Dropout(dropout)
+        self.attention2 = Attention(64 )
+        self.conv3 = nn.Conv1d(64 , 32 , kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm1d(32 )
+        self.dropout3 = nn.Dropout(dropout)
+        self.attention3 = Attention(32)
+        #self.conv4 = nn.Conv1d(128 , 256 , kernel_size=3, padding=1)
+        #self.bn4 = nn.BatchNorm1d(256 )
+        #self.dropout4 = nn.Dropout(dropout)
+        #self.attention4 = Attention(256 )
+        self.conv4 = nn.Conv1d(32, 4, kernel_size=3, padding=1)
+        self.bn4 = nn.BatchNorm1d(4)
+        self.dropout4 = nn.Dropout(dropout)
+        self.attention4 = Attention(4)
+        end_layer = 4*500
+        self.fc = nn.ModuleList()
+        for i in range(ff_layers):
+            #print(end_layer * (2**i))
+            self.fc.append(nn.Linear(end_layer * (2**i), (end_layer * 2**(i+1)) if  i < ff_layers-1 else 2))
+        #self.fc = nn.Linear
+
+    def forward(self, x):
+        x = self.dropout1(F.relu(self.bn1(self.conv1(x))))
+        x = self.attention1(x)
+        x = self.dropout2(F.relu(self.bn2(self.conv2(x))))
+        x = self.attention2(x)
+        x = self.dropout3(F.relu(self.bn3(self.conv3(x))))
+        x = self.attention3(x)
+        x = self.dropout4(F.relu(self.bn4(self.conv4(x))))
+        x = self.attention4(x)
+        #x = F.avg_pool1d(x, x.shape[2])
+        #print(x.shape)
         x = x.view(x.shape[0], -1)
         for i, ff in enumerate(self.fc):
             if i < len(self.fc) - 1:  # If not the last layer, apply relu activation

@@ -14,12 +14,12 @@ from sklearn.preprocessing import scale, normalize, minmax_scale
 # 15% je naturalistični toni iz zvočnega dataseta.
 
 # zapiranje in odpiranje oči je zelo opazno v EEG posnetku.
-TEST = 1
+TEST = 0
 if __name__ == '__main__':
     if TEST == 0:
-        a = read_raw_eeglab("/home/sebastjan/PycharmProjects/eeg/ds003490-download/sub-050/ses-01/eeg/sub-050_ses-01_task-Rest_eeg.set", preload=True)
+        a = read_raw_eeglab("/home/sebastjan/PycharmProjects/eeg/ds003490-download/sub-001/ses-02/eeg/sub-001_ses-02_task-Rest_eeg.set", preload=True)
         #a = read_raw_brainvision("/home/sebastjan/PycharmProjects/eeg/eeg/Control1025.vhdr")
-        low_cut = 0.1
+        low_cut = 1
         hi_cut = 30
         a.filter(low_cut, hi_cut)
         a.plot()

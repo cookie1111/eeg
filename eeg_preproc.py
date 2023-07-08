@@ -249,6 +249,7 @@ class EEGNpDataset(Dataset):
         self.ids = id_column
         self.subjects = pd.read_table(os.path.join(root_dir, participants))
         self.epoched = epoched
+        self.use_index = use_index
         # for using a custom index
         if use_index is not None:
             self.subjects = self.subjects.iloc[use_index]
@@ -542,9 +543,10 @@ class EEGNpDataset(Dataset):
             return splits
 
     def info(self):
-        self.debug = True
+        self.debug = False
         print(f"________________________INFO________________________\n"
               f"Amount of subjects: {len(self.epochs_list)}\n"
+              f"Participants: {self.subjects.participant_id}"
               f"Amount of subjects based of data_points: {len(self.data_points)}\n"
               f"All samples: {sum(self.data_points)}\n"
               f"Class balance: {sum(self.y_list)/len(self.y_list)} (1 class vs all)\n"
